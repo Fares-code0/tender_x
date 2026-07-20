@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import { ZodError, type ZodSchema } from 'zod';
+import { ZodError, type z } from 'zod';
 
 export class AppError extends Error {
   constructor(
@@ -13,7 +13,7 @@ export class AppError extends Error {
 }
 
 /** يتحقق من body بمخطط Zod ويرمي 422 بشكل الخطأ الموحد */
-export function validate<T>(schema: ZodSchema<T>, data: unknown): T {
+export function validate<S extends z.ZodTypeAny>(schema: S, data: unknown): z.output<S> {
   const result = schema.safeParse(data);
   if (!result.success) {
     throw new AppError(

@@ -158,22 +158,30 @@ tender-system/
 
 **الهدف:** تسجيل وعرض وتعديل والبحث في المناقصات.
 
-- [ ] **M2.1** — Zod schemas في `shared`: `createTenderSchema`, `updateTenderSchema` (title, entity, closingDate إلزامية — BR-010).
+- [x] **M2.1** — Zod schemas في `shared`: `createTenderSchema`, `updateTenderSchema` (title, entity, closingDate إلزامية — BR-010).
   - ✅ Verify: اختبار وحدة: schema يرفض مناقصة بدون closingDate.
-- [ ] **M2.2** — API: `POST /tenders` (QA فقط) — تُنشأ بحالة `NEW` + قيد بالـAudit Log + سجل في StatusHistory.
+  - Verified: 6 اختبارات وحدة خضراء في tests/tender-schemas.test.ts (منها رفض مناقصة بدون closingDate وبدون entity + رسائل عربية).
+- [x] **M2.2** — API: `POST /tenders` (QA فقط) — تُنشأ بحالة `NEW` + قيد بالـAudit Log + سجل في StatusHistory.
   - ✅ Verify: اختبار: إنشاء ناجح 201 + وجود صف AuditLog مرتبط، وWriter يحاول الإنشاء فيرفض 403.
-- [ ] **M2.3** — API: `GET /tenders` مع فلاتر: status, entity, assigneeId, closingBefore/After + pagination + ترتيب بموعد الإغلاق.
+  - Verified: اختبارات خضراء: 201 + NEW + assignee=QA + صف AuditLog + صف StatusHistory(null→NEW)، وWriter→403، وبدون closingDate→422.
+- [x] **M2.3** — API: `GET /tenders` مع فلاتر: status, entity, assigneeId, closingBefore/After + pagination + ترتيب بموعد الإغلاق.
   - ✅ Verify: اختبارات للفلاتر الثلاثة على بيانات الـseed.
-- [ ] **M2.4** — API: `GET /tenders/:id` (تفاصيل + المسؤول الحالي + تاريخ الحالات) و`PATCH /tenders/:id` (حسب الصلاحية + Audit).
+  - Verified: 6 اختبارات خضراء: status، entity، assigneeId، closingBefore/After مع الترتيب تصاعديًا، pagination، و401 بدون auth.
+- [x] **M2.4** — API: `GET /tenders/:id` (تفاصيل + المسؤول الحالي + تاريخ الحالات) و`PATCH /tenders/:id` (حسب الصلاحية + Audit).
   - ✅ Verify: اختبار: التعديل يسجل قيد Audit جديد.
-- [ ] **M2.5** — تحذير التكرار: عند الإنشاء بنفس الـurl أو (title+entity) يرجع تحذير 409 قابل للتجاوز بفلاغ `force`.
+  - Verified: اختبارات خضراء: التفاصيل تشمل currentAssignee وstatusHistory، 404 لغير الموجود، PATCH يضيف قيد TENDER_UPDATED بعد TENDER_CREATED، وWriter→403.
+- [x] **M2.5** — تحذير التكرار: عند الإنشاء بنفس الـurl أو (title+entity) يرجع تحذير 409 قابل للتجاوز بفلاغ `force`.
   - ✅ Verify: اختبار الحالتين (رفض ثم قبول مع force).
-- [ ] **M2.6** — Frontend: صفحة "المناقصات" — جدول RTL بفلاتر وبحث + Badge ملوّن لكل حالة + مؤشر بصري للمناقصات القريبة من الإغلاق (≤3 أيام أحمر).
+  - Verified: اختباران خضراوان: نفس الـurl→409 ثم force=1→201، ونفس (title+entity) برابط مختلف→409. + تحقق يدوي من الواجهة.
+- [x] **M2.6** — Frontend: صفحة "المناقصات" — جدول RTL بفلاتر وبحث + Badge ملوّن لكل حالة + مؤشر بصري للمناقصات القريبة من الإغلاق (≤3 أيام أحمر).
   - ✅ Verify: افتح الصفحة، جرّب الفلاتر بنفسك، وتأكد من الألوان على بيانات الـseed.
-- [ ] **M2.7** — Frontend: نموذج "إضافة مناقصة" (QA فقط) بتحقق Zod نفسه + رسائل خطأ عربية.
+  - Verified: من المتصفح: جدول الخمسة بـBadges ملونة لكل حالة، مناقصة "تطوير بوابة" ظهرت حمراء مع شارة "متبقٍ 2 أيام"، فلتر الحالة أرجع 1 وفلتر الجهة "وزارة" أرجع 2 (screenshot).
+- [x] **M2.7** — Frontend: نموذج "إضافة مناقصة" (QA فقط) بتحقق Zod نفسه + رسائل خطأ عربية.
   - ✅ Verify: جرّب إرسال نموذج ناقص — الرسائل تظهر بالعربي والنموذج لا يُرسل.
-- [ ] **M2.8** — Frontend: صفحة تفاصيل المناقصة (بيانات + Timeline لتاريخ الحالات).
+  - Verified: إرسال نموذج فارغ أظهر 3 رسائل عربية تحت الحقول (بعد إصلاح "Invalid date" — انظر سجل المشاكل) ولم يُرسل. الرابط /tenders/new محمي بدور QA.
+- [x] **M2.8** — Frontend: صفحة تفاصيل المناقصة (بيانات + Timeline لتاريخ الحالات).
   - ✅ Verify: افتح مناقصة من الـseed وتأكد من ظهور الـTimeline.
+  - Verified: صفحة التفاصيل تعرض كل البيانات + Timeline "أُنشئت (جديدة) — أحمد المراجع" (screenshot). بوابة الخروج نُفذت كاملة: إضافة → ظهرت في الجدول → تفاصيل → تعديل → قيد TENDER_UPDATED مثبت باستعلام مباشر على القاعدة.
 
 **🔒 بوابة الخروج من M2:** دورة كاملة من الواجهة: إضافة مناقصة → تظهر في الجدول → تفتح تفاصيلها → تعدلها → التعديل مسجل في Audit.
 
@@ -308,7 +316,7 @@ tender-system/
 |---|---|---|---|
 | M0 — التأسيس | ✅ مكتمل | 2026-07-20 | 5 passed (api 3 + web 2) |
 | M1 — Auth & RBAC | ✅ مكتمل | 2026-07-20 | 20 passed (api 18 + web 2) |
-| M2 — Tender CRUD | ⬜ لم يبدأ | — | — |
+| M2 — Tender CRUD | ✅ مكتمل | 2026-07-20 | 41 passed (api 39 + web 2) |
 | M3 — المراجعة والChecklist | ⬜ لم يبدأ | — | — |
 | M4 — الWorkflow | ⬜ لم يبدأ | — | — |
 | M5 — المرفقات | ⬜ لم يبدأ | — | — |
@@ -328,6 +336,8 @@ tender-system/
 | 2026-07-20 | M1 | `initdb` على Windows أنشأ القاعدة بترميز WIN1252 فرفض النص العربي في الـseed (خطأ 22P05) | إعادة تهيئة الـcluster مع `initdbFlags: ['--encoding=UTF8', '--locale=C']` وحذف `.pgdata` القديمة، ثم إعادة migrate + seed — العربية تُخزَّن وتُسترجع سليمة |
 | 2026-07-20 | M1 | فشل type augmentation لـ`express-serve-static-core` مع عزل pnpm (TS2664) | استبداله بـ`declare global namespace Express` — يعمل مع @types/express مباشرة |
 | 2026-07-20 | M1 | أخطاء "Invalid hook call" في كونسول المتصفح | ثبت أنها رسائل تاريخية متراكمة من فترة إعادة تثبيت التبعيات أثناء عمل خادم Vite — التحميل النظيف بعد marker لا يُظهر أي خطأ |
+| 2026-07-20 | M2 | `z.coerce.date` مع defaults كسر نوع الإخراج في `validate()` (TS18048: page possibly undefined) | تغيير توقيع validate إلى `<S extends z.ZodTypeAny>(schema: S): z.output<S>` للحفاظ على أنواع الإخراج |
+| 2026-07-20 | M2 | رسالة `Invalid date` الإنجليزية من `z.coerce.date` عند ترك موعد الإغلاق فارغًا | استخدام `errorMap` مخصص برسالة عربية في createTenderSchema وupdateTenderSchema |
 
 ---
 

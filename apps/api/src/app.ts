@@ -3,6 +3,7 @@ import cookieParser from 'cookie-parser';
 import { pingSchema } from '@tender/shared';
 import { authRouter } from './routes/auth';
 import { adminUsersRouter } from './routes/adminUsers';
+import { tendersRouter } from './routes/tenders';
 import { errorHandler } from './lib/errors';
 
 export function createApp() {
@@ -25,6 +26,7 @@ export function createApp() {
 
   app.use('/auth', authRouter);
   app.use('/admin/users', adminUsersRouter);
+  app.use('/tenders', tendersRouter);
 
   app.use(errorHandler);
   return app;

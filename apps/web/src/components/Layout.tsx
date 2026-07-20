@@ -21,6 +21,9 @@ export function Layout() {
               <NavLink to="/" end className={navLinkClass}>
                 لوحة التحكم
               </NavLink>
+              <NavLink to="/tenders" className={navLinkClass}>
+                المناقصات
+              </NavLink>
               {user?.role === 'ADMIN' && (
                 <NavLink to="/admin/users" className={navLinkClass}>
                   إدارة المستخدمين
