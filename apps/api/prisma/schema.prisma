@@ -7,7 +7,164 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// جدول إعدادات النظام (BR-009) — الكيانات الكاملة تُضاف في M1.1
+enum Role {
+  ADMIN
+  QA
+  WRITER
+  MANAGER
+  OWNER
+}
+
+enum TenderStatus {
+  NEW
+  UNDER_REVIEW
+  REJECTED
+  PROPOSAL_PREPARATION
+  PENDING_APPROVAL
+  SUBMITTED
+  WON
+  LOST
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  createdTenders  Tender[]              @relation("TenderCreator")
+  assignedTenders Tender[]              @relation("TenderAssignee")
+  auditLogs       AuditLog[]
+  notifications   Notification[]
+  statusChanges   TenderStatusHistory[]
+  attachments     Attachment[]
+}
+
+model Tender {
+  id                String       @id @default(cuid())
+  title             String
+  entity            String // الجهة المعلنة (BR-010)
+  source            String?
+  url               String?
+  closingDate       DateTime // موعد الإغلاق (BR-010)
+  description       String?
+  status            TenderStatus @default(NEW)
+  rejectionReason   String?
+  managerApprovedAt DateTime? // اعتماد المدير قبل التقديم (BR-004)
+  currentAssigneeId String? // مسؤول واحد فقط في أي لحظة (BR-003)
+  createdById       String
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  currentAssignee  User?                   @relation("TenderAssignee", fields: [currentAssigneeId], references: [id])
+  createdBy        User                    @relation("TenderCreator", fields: [createdById], references: [id])
+  checklistAnswers TenderChecklistAnswer[]
+  attachments      Attachment[]
+  notifications    Notification[]
+  auditLogs        AuditLog[]
+  statusHistory    TenderStatusHistory[]
+
+  @@index([status])
+  @@index([closingDate])
+  @@index([currentAssigneeId])
+}
+
+model ChecklistTemplate {
+  id        String          @id @default(cuid())
+  name      String
+  isActive  Boolean         @default(true)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  items     ChecklistItem[]
+}
+
+model ChecklistItem {
+  id         String                  @id @default(cuid())
+  templateId String
+  text       String
+  order      Int
+  template   ChecklistTemplate       @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  answers    TenderChecklistAnswer[]
+
+  @@index([templateId])
+}
+
+model TenderChecklistAnswer {
+  id        String        @id @default(cuid())
+  tenderId  String
+  itemId    String
+  checked   Boolean       @default(false)
+  note      String?
+  updatedAt DateTime      @updatedAt
+  tender    Tender        @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  item      ChecklistItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([tenderId, itemId])
+}
+
+model Attachment {
+  id           String   @id @default(cuid())
+  tenderId     String
+  fileName     String
+  storagePath  String
+  mimeType     String
+  size         Int
+  version      Int      @default(1)
+  uploadedById String
+  createdAt    DateTime @default(now())
+  tender       Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+
+  @@index([tenderId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  tenderId  String?
+  type      String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tender    Tender?  @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  tenderId  String?
+  userId    String
+  action    String
+  details   Json?
+  createdAt DateTime @default(now())
+  tender    Tender?  @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([tenderId])
+  @@index([userId])
+}
+
+model TenderStatusHistory {
+  id          String        @id @default(cuid())
+  tenderId    String
+  fromStatus  TenderStatus?
+  toStatus    TenderStatus
+  changedById String
+  note        String?
+  createdAt   DateTime      @default(now())
+  tender      Tender        @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  changedBy   User          @relation(fields: [changedById], references: [id])
+
+  @@index([tenderId])
+}
+
+// جدول إعدادات النظام (BR-009)
 model SystemSetting {
   key       String   @id
   value     String

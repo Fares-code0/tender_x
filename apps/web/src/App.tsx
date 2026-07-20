@@ -1,10 +1,26 @@
+import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { LoginPage } from './pages/LoginPage';
+import { HomePage } from './pages/HomePage';
+import { AdminUsersPage } from './pages/AdminUsersPage';
+import { ProtectedRoute } from './components/ProtectedRoute';
+import { Layout } from './components/Layout';
+
 export default function App() {
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <div className="rounded-xl bg-white p-8 shadow">
-        <h1 className="text-2xl font-bold text-slate-800">نظام إدارة المناقصات</h1>
-        <p className="mt-2 text-slate-500">Brains Valley — بيئة التطوير جاهزة</p>
-      </div>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route element={<ProtectedRoute />}>
+          <Route element={<Layout />}>
+            <Route path="/" element={<HomePage />} />
+          </Route>
+        </Route>
+        <Route element={<ProtectedRoute roles={['ADMIN']} />}>
+          <Route element={<Layout />}>
+            <Route path="/admin/users" element={<AdminUsersPage />} />
+          </Route>
+        </Route>
+      </Routes>
+    </BrowserRouter>
   );
 }

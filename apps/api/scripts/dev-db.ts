@@ -17,6 +17,8 @@ const pg = new EmbeddedPostgres({
   password: 'postgres',
   port: 5432,
   persistent: true,
+  // UTF8 إلزامي — الترميز الافتراضي على Windows (WIN1252) لا يقبل النص العربي
+  initdbFlags: ['--encoding=UTF8', '--locale=C'],
 });
 
 async function main() {

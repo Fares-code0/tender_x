@@ -129,20 +129,26 @@ tender-system/
 
 **الهدف:** تسجيل دخول آمن + صلاحيات حسب الدور.
 
-- [ ] **M1.1** — Prisma Schema كامل للكيانات: `User`, `Tender`, `ChecklistTemplate`, `ChecklistItem`, `TenderChecklistAnswer`, `Attachment`, `Notification`, `AuditLog`, `TenderStatusHistory`.
+- [x] **M1.1** — Prisma Schema كامل للكيانات: `User`, `Tender`, `ChecklistTemplate`, `ChecklistItem`, `TenderChecklistAnswer`, `Attachment`, `Notification`, `AuditLog`, `TenderStatusHistory`.
   - `User`: id, name, email(unique), passwordHash, role(enum: ADMIN|QA|WRITER|MANAGER|OWNER), isActive.
   - `Tender`: id, title, entity(الجهة المعلنة), source, url, closingDate, description, status(enum بالحالات الثمانية), currentAssigneeId, rejectionReason?, createdById, timestamps.
   - ✅ Verify: `db:migrate` ينجح + افتح Prisma Studio وتأكد من الجداول والعلاقات.
-- [ ] **M1.2** — Seed script: مستخدم لكل دور (admin@test.com إلخ، باسورد موحد للتطوير) + 5 مناقصات تجريبية بحالات مختلفة.
+  - Verified: migration `full_schema` طُبق بنجاح، واستعلام information_schema أظهر كل الجداول العشرة (بديل غير تفاعلي عن Prisma Studio) والعلاقات مثبتة بعمل الـseed والاختبارات.
+- [x] **M1.2** — Seed script: مستخدم لكل دور (admin@test.com إلخ، باسورد موحد للتطوير) + 5 مناقصات تجريبية بحالات مختلفة.
   - ✅ Verify: `db:seed` ثم استعلام يرجع 5 users و5 tenders.
-- [ ] **M1.3** — Auth API: `POST /auth/login`, `POST /auth/logout`, `GET /auth/me` — JWT في httpOnly cookie + bcrypt.
+  - Verified: استعلام مباشر أرجع `users=5 tenders=5` بخمس حالات مختلفة (NEW/UNDER_REVIEW/PROPOSAL_PREPARATION/PENDING_APPROVAL/SUBMITTED) والنص العربي سليم. الباسورد الموحد: `Test1234!`.
+- [x] **M1.3** — Auth API: `POST /auth/login`, `POST /auth/logout`, `GET /auth/me` — JWT في httpOnly cookie + bcrypt.
   - ✅ Verify: اختبارات Supertest: لوجين صحيح 200 + cookie، باسورد غلط 401، `/me` بدون cookie يرجع 401.
-- [ ] **M1.4** — Middleware: `requireAuth` + `requireRole(...roles)`.
+  - Verified: 6 اختبارات Supertest خضراء في tests/auth.test.ts تغطي كل الحالات المطلوبة + httpOnly.
+- [x] **M1.4** — Middleware: `requireAuth` + `requireRole(...roles)`.
   - ✅ Verify: اختبار endpoint محمي بـMANAGER يرفض QA بـ403 ويقبل MANAGER.
-- [ ] **M1.5** — Admin API لإدارة المستخدمين: إنشاء/تعطيل/تغيير دور (`/admin/users`) — Admin فقط.
+  - Verified: 4 اختبارات خضراء في tests/rbac.test.ts (401 بدون auth، QA→403، MANAGER→200، مستخدم عُطّل بعد اللوجين→401).
+- [x] **M1.5** — Admin API لإدارة المستخدمين: إنشاء/تعطيل/تغيير دور (`/admin/users`) — Admin فقط.
   - ✅ Verify: اختبارات: Admin ينشئ user بنجاح، مستخدم معطّل (isActive=false) لا يستطيع اللوجين.
-- [ ] **M1.6** — Frontend: صفحة Login عربية + حفظ حالة المستخدم (TanStack Query لـ`/me`) + ProtectedRoute + إخفاء العناصر حسب الدور.
+  - Verified: 5 اختبارات خضراء في tests/admin-users.test.ts (إنشاء 201 + قيد Audit، QA→403، بريد مكرر→409، معطّل لا يدخل، تغيير دور).
+- [x] **M1.6** — Frontend: صفحة Login عربية + حفظ حالة المستخدم (TanStack Query لـ`/me`) + ProtectedRoute + إخفاء العناصر حسب الدور.
   - ✅ Verify: جرّب بنفسك في المتصفح: لوجين بكل دور من حسابات الـseed، والتوجيه يشتغل، والـlogout يمسح الجلسة.
+  - Verified: من المتصفح فعليًا: admin (يرى "إدارة المستخدمين" وجدول الخمسة)، qa وmanager (الرابط مخفي عنهما)، logout يعيد لصفحة الدخول، وغير المسجل يُوجَّه لـ/login. writer وowner تحققا بلوجين API ناجح 200+cookie (نفس مسار الواجهة).
 
 **🔒 بوابة الخروج من M1:** كل اختبارات الـauth خضراء + لوجين/لوج آوت شغال من الواجهة فعليًا.
 
@@ -301,7 +307,7 @@ tender-system/
 | Milestone | الحالة | تاريخ الإنجاز | الاختبارات |
 |---|---|---|---|
 | M0 — التأسيس | ✅ مكتمل | 2026-07-20 | 5 passed (api 3 + web 2) |
-| M1 — Auth & RBAC | 🟡 قيد التنفيذ | — | — |
+| M1 — Auth & RBAC | ✅ مكتمل | 2026-07-20 | 20 passed (api 18 + web 2) |
 | M2 — Tender CRUD | ⬜ لم يبدأ | — | — |
 | M3 — المراجعة والChecklist | ⬜ لم يبدأ | — | — |
 | M4 — الWorkflow | ⬜ لم يبدأ | — | — |
@@ -317,6 +323,11 @@ tender-system/
 | التاريخ | Milestone | المشكلة | الحل |
 |---|---|---|---|
 | 2026-07-20 | M0 | الجهاز لا يملك Docker ولا PostgreSQL محلي، وM0.2 تتطلب `docker compose up` | كُتب `docker-compose.yml` كما تنص الخطة (يعمل عند توفر Docker)، وأُضيف بديل تطوير user-space: سكريبت `pnpm db:start` يشغّل PostgreSQL 16 حقيقي عبر حزمة `embedded-postgres` على نفس المنفذ ونفس بيانات الاتصال — الـstack لم يتغير (PostgreSQL + Prisma) |
+| 2026-07-20 | M0 | `embedded-postgres@^16.4.0-beta.15` غير موجود على npm | تثبيت الإصدار المتاح `16.14.0-beta.17` (PostgreSQL 16.14) |
+| 2026-07-20 | M0 | تعارض أنواع: vitest 2 مربوط بـvite 5 بينما المشروع على vite 6 (فشل build) | ترقية vitest إلى ^3 في api وweb — يدعم vite 6 |
+| 2026-07-20 | M1 | `initdb` على Windows أنشأ القاعدة بترميز WIN1252 فرفض النص العربي في الـseed (خطأ 22P05) | إعادة تهيئة الـcluster مع `initdbFlags: ['--encoding=UTF8', '--locale=C']` وحذف `.pgdata` القديمة، ثم إعادة migrate + seed — العربية تُخزَّن وتُسترجع سليمة |
+| 2026-07-20 | M1 | فشل type augmentation لـ`express-serve-static-core` مع عزل pnpm (TS2664) | استبداله بـ`declare global namespace Express` — يعمل مع @types/express مباشرة |
+| 2026-07-20 | M1 | أخطاء "Invalid hook call" في كونسول المتصفح | ثبت أنها رسائل تاريخية متراكمة من فترة إعادة تثبيت التبعيات أثناء عمل خادم Vite — التحميل النظيف بعد marker لا يُظهر أي خطأ |
 
 ---
 

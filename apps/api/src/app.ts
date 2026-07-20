@@ -1,6 +1,9 @@
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import { pingSchema } from '@tender/shared';
+import { authRouter } from './routes/auth';
+import { adminUsersRouter } from './routes/adminUsers';
+import { errorHandler } from './lib/errors';
 
 export function createApp() {
   const app = express();
@@ -20,5 +23,9 @@ export function createApp() {
     res.json({ pong: parsed.data.message });
   });
 
+  app.use('/auth', authRouter);
+  app.use('/admin/users', adminUsersRouter);
+
+  app.use(errorHandler);
   return app;
 }
