@@ -38,7 +38,8 @@
 | ACT-10 | تسجيل التقديم | BR-004 | ✅ (MANAGER) |
 | ACT-11 | تسجيل النتيجة (Won/Lost) | BR-005 | ✅ (MANAGER) |
 | ACT-12 | إدارة المستخدمين والأدوار | — | ✅ (ADMIN) |
-| ACT-13 | رفع/إدارة المرفقات | — | 🔷 (M5) |
+| ACT-13 | رفع/إدارة المرفقات | — | ✅ (WRITER للرفع؛ التحميل لأي مستخدم مصادَق) |
+| ACT-14 | عرض/تعليم الإشعارات كمقروءة | — | ✅ (أي مستخدم مصادَق — إشعاراته فقط) |
 
 - ✅ **منفّذ**: يوجد endpoint فعلي في الكود يفرض هذا الإجراء.
 - 🔷 **مخطّط**: موثّق كمتطلب ولم يُنفَّذ بعد (لا يوجد endpoint خاص به حاليًا).
@@ -61,7 +62,11 @@
 | ACT-10 | تسجيل التقديم | لا | لا | نعم | لا | لا |
 | ACT-11 | تسجيل النتيجة (Won/Lost) | لا | لا | نعم | لا | لا |
 | ACT-12 | إدارة المستخدمين والأدوار | لا | لا | لا | لا | نعم |
-| ACT-13 | رفع/إدارة المرفقات | لا | نعم | لا | لا | لا |
+| ACT-13 | رفع المرفقات | لا | نعم | لا | لا | لا |
+| ACT-13 | تحميل المرفقات | نعم | نعم | نعم | نعم | نعم |
+| ACT-14 | عرض/تعليم الإشعارات | نعم | نعم | نعم | نعم | نعم |
+
+> **ملاحظة على ACT-13:** الرفع (`POST /tenders/:id/attachments`) مقصور على **WRITER**؛ أما التحميل (`GET /attachments/:id/download`) وقائمة المرفقات (`GET /tenders/:id/attachments`) فمتاحان لأي مستخدم مصادَق (`requireAuth`). وACT-14 (الإشعارات) يرى كل مستخدم **إشعاراته هو فقط** — لا يمكن قراءة إشعارات مستخدم آخر (404).
 
 > **محدود لـACT-06 (المدير):** الرفض مسموح في مرحلة الاعتماد فقط (`PENDING_APPROVAL → REJECTED`)؛ الاستبعاد المبكر (`UNDER_REVIEW → REJECTED`) لمراجع الجودة (QA). كلاهما تحت BR-002. راجع §3.
 
@@ -119,6 +124,7 @@
 | ACT-10 (تسجيل التقديم) | `POST /tenders/:id/mark-submitted` (MANAGER) — يرفض 422 دون `managerApprovedAt` (BR-004) | ✅ منفّذ (M4.5). |
 | ACT-11 (تسجيل النتيجة) | `POST /tenders/:id/result` (MANAGER) بقيمة WON/LOST — مقبول فقط من `SUBMITTED` (BR-005) | ✅ منفّذ (M4.5). |
 | ACT-12 (إدارة المستخدمين والأدوار) | `GET/POST/PATCH /admin/users` محروسة جميعًا بـ `requireAuth, requireRole('ADMIN')` في `apps/api/src/routes/adminUsers.ts` | ✅ مطابق للمصفوفة — لا فجوة. |
-| ACT-13 (رفع/إدارة المرفقات) | لا يوجد endpoint بعد | 🔷 مخطّط — بانتظار التنفيذ في M5. |
+| ACT-13 (رفع/إدارة المرفقات) | `POST /tenders/:id/attachments` (multipart) محروس بـ `requireRole('WRITER')`، خلف `StorageService` (`services/storage.ts`، قرص محلي قابل للاستبدال بـS3)، مع قيود النوع (pdf/docx/xlsx/png/jpg/zip) والحجم (20MB) وversioning؛ `GET /tenders/:id/attachments` و`GET /attachments/:id/download` بـ `requireAuth` | ✅ منفّذ (M5.1–M5.3). التحميل متاح لأي مستخدم مصادَق حسب المصفوفة. |
+| ACT-14 (عرض/تعليم الإشعارات) | `GET /notifications` (قائمة + عدّاد غير المقروء) و`POST /notifications/:id/read` محروسان بـ `requireAuth` في `apps/api/src/routes/notifications.ts`؛ التعليم كمقروء مقصور على صاحب الإشعار (404 لغيره). الإشعارات تُولَّد من `NotificationService` (`services/notifications.ts`) عند أحداث سير العمل + job الإغلاق (BR-009) | ✅ منفّذ (M6.1/M6.3). |
 
 </div>
