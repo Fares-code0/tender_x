@@ -1,37 +1,35 @@
-# كتالوج قواعد العمل
+# 01 — كتالوج قواعد العمل (Business Rules Catalogue)
 
-## مقدّمة
+<div dir="rtl">
 
-هذا الكتالوج يُعرِّف جميع قواعد العمل الأساسية التي تحكم نظام إدارة المناقصات الذكي. كل قاعدة معرّفة برقم فريد (BR-xxx)، وترتبط بالإجراءات والحالات عبر معرّفات مشتركة.
+## الغرض والمصدر
 
-**المصدر:** `CLAUDE_CODE_PROMPT_Tender_System.md`  
-**الاصطلاح:**
+هذا المستند هو الكتالوج المرجعي لقواعد العمل (Business Rules) في نظام إدارة المناقصات. المصدر الأساسي لهذه القواعد هو ملف `CLAUDE_CODE_PROMPT_Tender_System.md` (قسم قواعد العمل، البحث عن "BR-00"). كل قاعدة هنا موسومة بحالة تنفيذ:
 
-- ✅ منفّذ: مُطبّق بالفعل في الكود الحالي
-- 🔷 مخطّط: قيد التطوير أو التخطيط
+- ✅ **منفّذ**: القاعدة مطبَّقة فعليًا في الكود الحالي (Backend/DB) اعتبارًا من نهاية M4 (Workflow State Machine).
+- 🔷 **مخطّط**: القاعدة موثّقة كمتطلب لكنها لم تُنفَّذ بعد في الكود؛ تنفيذها متوقّع في مراحل لاحقة من خارطة الطريق.
 
----
+> **تحديث M3 + M4:** أُنجزت مرحلتا المراجعة والـChecklist (M3) وسير العمل الكامل (M4). كل انتقالات الحالة تمر الآن حصريًا عبر **State Machine مركزية** في `apps/api/src/services/tenderWorkflow.ts` (جدول انتقالات واحد: من → إلى → الأدوار المسموح لها)، ويُنفَّذ تغيير الحالة عبر `recordStatusChange()` في `apps/api/src/lib/statusChange.ts` (يحدّث الحالة + `TenderStatusHistory` + Audit في معاملة واحدة). نتيجةً لذلك انتقلت القواعد BR-001/002/004/005/011 من "مخطّط" إلى "منفّذ".
 
 ## جدول قواعد العمل
 
-| المعرّف | الوصف                                                      | أين تُنفَّذ                | الإجراءات المرتبطة     | الحالة   |
-| ------- | ---------------------------------------------------------- | -------------------------- | ---------------------- | -------- |
-| BR-001  | لا تحويل إلى "إعداد العرض" قبل اكتمال الـ Checklist        | Backend transition guard   | ACT-04, ACT-05         | 🔷 مخطّط |
-| BR-002  | سبب الرفض إلزامي عند استبعاد مناقصة                        | Backend validation         | ACT-06                 | 🔷 مخطّط |
-| BR-003  | مسؤول واحد فقط لكل مناقصة (currentAssigneeId)              | حقل في قاعدة البيانات      | ACT-05, ACT-09         | ✅ منفّذ |
-| BR-004  | لا تقديم بدون اعتماد المدير (managerApprovedAt)            | Backend guard              | ACT-07, ACT-08, ACT-10 | 🔷 مخطّط |
-| BR-005  | لا إغلاق مناقصة مُقدَّمة بدون تسجيل نتيجة (Won/Lost)       | Backend guard              | ACT-11                 | 🔷 مخطّط |
-| BR-008  | كل إجراء جوهري يُسجَّل في Audit Log                        | logAudit() في lib/audit.ts | كل الإجراءات           | ✅ منفّذ |
-| BR-010  | موعد الإغلاق والجهة المعلنة إلزاميان (closingDate, entity) | قيود NOT NULL              | ACT-01                 | ✅ منفّذ |
-| BR-011  | إعادة العرض تتطلب ملاحظات إلزامية من المدير                | Backend validation         | ACT-09                 | 🔷 مخطّط |
+| المعرّف | الوصف | أين تُنفَّذ | الإجراءات المرتبطة | الحالة |
+|---|---|---|---|---|
+| BR-001 | لا تحويل لإعداد العرض قبل اكتمال الـChecklist | ضابط `isChecklistComplete()` في `routes/tenders.ts` (يُفرَض في التعيين ACT-05 واعتماد المراجعة) | ACT-04 / ACT-05 | ✅ منفّذ |
+| BR-002 | سبب الرفض إلزامي | `reviewDecisionSchema` (استبعاد QA) و`managerDecisionSchema` (إيقاف المدير) في `packages/shared` | ACT-06 | ✅ منفّذ |
+| BR-003 | مسؤول واحد فقط لكل مناقصة | حقل `currentAssigneeId` يُضبط عند كل انتقال (تعيين الكاتب، الإعادة، إلخ) | ACT-05 / ACT-09 | ✅ منفّذ |
+| BR-004 | لا تقديم بدون اعتماد المدير | حقل `managerApprovedAt`؛ `mark-submitted` يرفض 422 إن كان فارغًا | ACT-07 / ACT-08 / ACT-10 | ✅ منفّذ |
+| BR-005 | لا تُغلق مناقصة مُقدَّمة بدون نتيجة | `result` لا يُقبل إلا من `SUBMITTED` (State Machine) → WON/LOST | ACT-11 | ✅ منفّذ |
+| BR-008 | كل إجراء جوهري يُسجَّل في Audit Log | `logAudit()` في `lib/audit.ts`، يُستدعى من كل انتقالات سير العمل عبر `recordStatusChange()` | كل الإجراءات | ✅ منفّذ (إنشاء/تعديل + كل انتقالات M3/M4) |
+| BR-009 | تنبيه اقتراب موعد الإغلاق قبل الموعد بعدد أيام قابل للتعديل، لكل المناقصات النشطة، بدون تكرار الإشعار لنفس المناقصة | Job مجدول (node-cron) + قيمة قابلة للتعديل في جدول `SystemSetting` | — (إشعار نظام مجدول، ليس إجراء مستخدم) | 🔷 مخطّط (الـJob مخطّط M6.2؛ جدول `SystemSetting` ✅ موجود فعلًا) |
+| BR-010 | موعد الإغلاق والجهة المعلنة إلزاميان | `closingDate` / `entity` NOT NULL | ACT-01 | ✅ منفّذ |
+| BR-011 | إعادة العرض تتطلب ملاحظات إلزامية | `managerDecisionSchema` (فرع `return` يتطلب `notes`) | ACT-09 | ✅ منفّذ |
 
-### ملاحظة
+> **ملاحظة:** BR-006, BR-007 غير مُعرَّفتين في البرومبت الحالي — محجوزتان.
 
-**BR-006, BR-007, BR-009** غير مُعرَّفة في البرومبت الحالي — محجوزة للتوسع المستقبلي.
+## مخطط انتقال الحالات (State Transition Diagram)
 
----
-
-## مخطط انتقال الحالات
+أسماء الحالات أدناه مطابقة تمامًا لتعداد `TenderStatus` في `apps/api/prisma/schema.prisma`.
 
 ```mermaid
 stateDiagram-v2
@@ -50,63 +48,45 @@ stateDiagram-v2
     LOST --> [*]
 ```
 
-**شرح الحالات:**
+مقابلة الحالات بالعربية (حسب `apps/web/src/lib/labels.ts`):
 
-- **NEW** (جديدة): مناقصة مُسجَّلة للتو
-- **UNDER_REVIEW** (قيد المراجعة): قيد التدقيق من قبل مراجع الجودة
-- **PROPOSAL_PREPARATION** (إعداد العرض): الكاتب يُحضّر العرض
-- **PENDING_APPROVAL** (بانتظار الاعتماد): العرض مُرسَل للمدير للاعتماد
-- **SUBMITTED** (مقدَّمة): العرض مُقدَّم رسميًا
-- **REJECTED** (مستبعدة): المناقصة مستبعدة نهائيًا
-- **WON** (فوز): فازت المناقصة
-- **LOST** (خسارة): خسرت المناقصة
+| الحالة (Enum) | التسمية بالعربية |
+|---|---|
+| NEW | جديدة |
+| UNDER_REVIEW | قيد المراجعة |
+| REJECTED | مستبعدة |
+| PROPOSAL_PREPARATION | إعداد العرض |
+| PENDING_APPROVAL | بانتظار الاعتماد |
+| SUBMITTED | مقدَّمة |
+| WON | فوز |
+| LOST | خسارة |
 
----
+## جدول الانتقالات (Transitions Table)
 
-## جدول الانتقالات (من → إلى)
+هذا الجدول مطابق حرفيًا لثابت `TRANSITIONS` في `apps/api/src/services/tenderWorkflow.ts` (المصدر الوحيد لقواعد تغيير الحالة). عمود "الإجراء (action)" هو اسم الانتقال في الـState Machine.
 
-| من                   | إلى                  | الدور المسؤول        | القاعدة | الحالة   |
-| -------------------- | -------------------- | -------------------- | ------- | -------- |
-| NEW                  | UNDER_REVIEW         | مراجع الجودة (QA)    | —       | 🔷 مخطّط |
-| UNDER_REVIEW         | PROPOSAL_PREPARATION | مراجع الجودة (QA)    | BR-001  | 🔷 مخطّط |
-| UNDER_REVIEW         | REJECTED             | مراجع الجودة (QA)    | BR-002  | 🔷 مخطّط |
-| PROPOSAL_PREPARATION | PENDING_APPROVAL     | كاتب العروض (WRITER) | BR-004  | 🔷 مخطّط |
-| PENDING_APPROVAL     | SUBMITTED            | المدير (MANAGER)     | BR-004  | 🔷 مخطّط |
-| PENDING_APPROVAL     | PROPOSAL_PREPARATION | المدير (MANAGER)     | BR-011  | 🔷 مخطّط |
-| PENDING_APPROVAL     | REJECTED             | المدير (MANAGER)     | BR-002  | 🔷 مخطّط |
-| SUBMITTED            | WON                  | المدير (MANAGER)     | BR-005  | 🔷 مخطّط |
-| SUBMITTED            | LOST                 | المدير (MANAGER)     | BR-005  | 🔷 مخطّط |
+| من | إلى | الإجراء (action) | الدور المسؤول | القاعدة | الحالة |
+|---|---|---|---|---|---|
+| NEW | UNDER_REVIEW | `REVIEW_START` | QA | — | ✅ |
+| UNDER_REVIEW | REJECTED | `REVIEW_REJECT` | QA | BR-002 | ✅ |
+| UNDER_REVIEW | PROPOSAL_PREPARATION | `ASSIGN_WRITER` | QA | BR-001 / BR-003 | ✅ |
+| PROPOSAL_PREPARATION | PENDING_APPROVAL | `SUBMIT_FOR_APPROVAL` | WRITER (المعيّن فقط) | — | ✅ |
+| PENDING_APPROVAL | PROPOSAL_PREPARATION | `MANAGER_RETURN` | MANAGER | BR-011 | ✅ |
+| PENDING_APPROVAL | REJECTED | `MANAGER_STOP` | MANAGER | BR-002 | ✅ |
+| PENDING_APPROVAL | SUBMITTED | `MARK_SUBMITTED` | MANAGER | BR-004 | ✅ |
+| SUBMITTED | WON | `RESULT_WON` | MANAGER | BR-005 | ✅ |
+| SUBMITTED | LOST | `RESULT_LOST` | MANAGER | BR-005 | ✅ |
 
----
+> **ملاحظة:** اعتماد المدير (`ACT-08`) ليس انتقال حالة — يضبط الحقل `managerApprovedAt` وتبقى الحالة `PENDING_APPROVAL` (استعدادًا لـ`MARK_SUBMITTED` وفق BR-004). أي محاولة انتقال غير موجود في الجدول أعلاه ترفضها الـState Machine بـ`422 INVALID_TRANSITION`، وأي انتقال بدور غير مسموح يُرفض بـ`403 FORBIDDEN_TRANSITION`.
 
-## جدول القرار (منطق الانتقال)
+## جدول القرارات (Decision Table) — القبول / الرفض / الإعادة
 
-| الشرط                  | القرار                  | القاعدة |
-| ---------------------- | ----------------------- | ------- |
-| Checklist مكتمل ✅     | تحويل إلى "إعداد العرض" | BR-001  |
-| Checklist ناقص ❌      | يبقى قيد المراجعة       | BR-001  |
-| طلب ناقص بيانات        | رفض مع سبب إلزامي       | BR-002  |
-| عرض يحتاج تعديل        | إعادة للكاتب بملاحظات   | BR-011  |
-| اعتماد المدير موجود ✅ | السماح بالتقديم         | BR-004  |
-| عرض مُقدَّم + Win/Loss | تسجيل النتيجة           | BR-005  |
+| الشرط | القرار | القاعدة |
+|---|---|---|
+| Checklist مكتمل | تحويل لإعداد العرض | BR-001 |
+| Checklist ناقص | يبقى قيد المراجعة | BR-001 |
+| طلب ناقص بيانات | رفض بسبب | BR-002 |
+| عرض يحتاج تعديل | إعادة للكاتب بملاحظات | BR-011 |
+| اعتماد المدير موجود | يسمح بالتقديم | BR-004 |
 
----
-
-## ملخص التنفيذ
-
-### المُنجَز (M0–M2) ✅
-
-- حقول قاعدة البيانات: `currentAssigneeId`, `closingDate`, `entity`, `status`
-- Audit logging للإنشاء والتعديل
-- قيود NOT NULL على الحقول الإلزامية
-
-### المُخطَّط (M3+) 🔷
-
-- Endpoints لانتقالات الحالة
-- Validation guards في Backend
-- Checklist completion logic
-- Manager approval workflow
-
----
-
-**آخر تحديث:** 2026-07-21
+</div>
