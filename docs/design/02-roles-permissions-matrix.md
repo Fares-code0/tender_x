@@ -42,6 +42,7 @@
 | ACT-14 | عرض/تعليم الإشعارات كمقروءة | — | ✅ (أي مستخدم مصادَق — إشعاراته فقط) |
 | ACT-15 | عرض لوحة المعلومات والتقارير (وتصدير CSV) | — | ✅ (لوحة المعلومات: أي مصادَق؛ التقارير: MANAGER/OWNER/ADMIN) |
 | ACT-16 | عرض سجل العمليات (Audit) — قراءة فقط | BR-008 / NFR-005 | ✅ (MANAGER/OWNER/ADMIN) |
+| ACT-17 | تعديل إعدادات النظام (أيام تنبيه الإغلاق) | BR-009 | ✅ (ADMIN) |
 
 - ✅ **منفّذ**: يوجد endpoint فعلي في الكود يفرض هذا الإجراء.
 - 🔷 **مخطّط**: موثّق كمتطلب ولم يُنفَّذ بعد (لا يوجد endpoint خاص به حاليًا).
@@ -70,6 +71,7 @@
 | ACT-15 | عرض لوحة المعلومات | نعم | نعم | نعم | نعم | نعم |
 | ACT-15 | عرض التقارير + تصدير CSV | لا | لا | نعم | نعم | نعم |
 | ACT-16 | عرض سجل العمليات (Audit) | لا | لا | نعم | نعم | نعم |
+| ACT-17 | تعديل إعدادات النظام | لا | لا | لا | لا | نعم |
 
 > **ملاحظة على ACT-16 (NFR-005):** سجل العمليات **للقراءة فقط** — لا يوجد أي endpoint حذف أو تعديل للـAudit في أي راوتر؛ متاح لـMANAGER/OWNER/ADMIN فقط.
 
@@ -122,7 +124,7 @@
 | الإجراء | ما يفرضه الكود حاليًا | المطلوب |
 |---|---|---|
 | ACT-01 (تسجيل مناقصة) | `POST /tenders` محروس بـ `requireRole('QA')` في `apps/api/src/routes/tenders.ts` | ✅ مطابق للمصفوفة — لا فجوة. |
-| ACT-02 (تعديل بيانات المناقصة) | `PATCH /tenders/:id` محروس بـ `requireRole('QA', 'MANAGER', 'ADMIN')` في `apps/api/src/routes/tenders.ts`، **بلا أي قيد على حالة المناقصة الحالية** | ⚠️ فجوة: الكود يسمح بالتعديل في أي حالة (state) بلا قيد. المطلوب لاحقًا تقييد التعديل حسب حالة المناقصة (مثلاً منع التعديل بعد `SUBMITTED`/`WON`/`LOST`). |
+| ACT-02 (تعديل بيانات المناقصة) | `PATCH /tenders/:id` محروس بـ `requireRole('QA', 'MANAGER', 'ADMIN')` في `apps/api/src/routes/tenders.ts`، **مع قفل التعديل بعد التقديم/الإغلاق** عبر `isTenderEditable()` (المُقفَلة: `SUBMITTED`/`WON`/`LOST`/`REJECTED` → 422 `TENDER_LOCKED`) | ✅ مطابق — الفجوة السابقة أُغلقت: التعديل مقصور على الحالات النشطة، ورابط "تعديل" مُخفى في الواجهة للحالات المُقفَلة. |
 | ACT-03 (عرض قائمة/تفاصيل) | `GET /tenders` و`GET /tenders/:id` محروسان بـ `requireAuth` فقط (أي دور مصادَق) في `apps/api/src/routes/tenders.ts` | ✅ مطابق للمصفوفة (الكل = نعم) — لا فجوة. |
 | ACT-04 (تطبيق/تحديث الـChecklist) | `PUT /tenders/:id/checklist` (+ `GET`) محروس بـ `requireRole('QA')`؛ قوالب الـChecklist عبر `/checklist-templates` (ADMIN/MANAGER) | ✅ منفّذ (M3.1/M3.4). |
 | ACT-05 (تحويل لإعداد العرض) | `POST /tenders/:id/assign` محروس بـ `requireRole('QA')`؛ يفرض BR-001 (`isChecklistComplete`) وBR-003 (المُعيَّن كاتب نشط) عبر الـState Machine | ✅ منفّذ (M4.2). |
@@ -137,5 +139,7 @@
 | ACT-14 (عرض/تعليم الإشعارات) | `GET /notifications` (قائمة + عدّاد غير المقروء) و`POST /notifications/:id/read` محروسان بـ `requireAuth` في `apps/api/src/routes/notifications.ts`؛ التعليم كمقروء مقصور على صاحب الإشعار (404 لغيره). الإشعارات تُولَّد من `NotificationService` (`services/notifications.ts`) عند أحداث سير العمل + job الإغلاق (BR-009) | ✅ منفّذ (M6.1/M6.3). |
 | ACT-15 (لوحة المعلومات والتقارير) | `GET /dashboard` بـ `requireAuth` (محتوى حسب الدور) و`GET /reports/summary` بـ `requireRole('MANAGER','OWNER','ADMIN')` في `apps/api/src/routes/{dashboard,reports}.ts`؛ حساب الإحصائيات في `services/stats.ts`؛ تصدير CSV في الواجهة (`ReportsPage.tsx`) | ✅ منفّذ (M7.1/M7.2/M7.4). |
 | ACT-16 (سجل العمليات) | `GET /tenders/:id/audit` بـ `requireRole('MANAGER','OWNER','ADMIN')` في `apps/api/src/routes/tenders.ts` — قراءة فقط، **لا مسار DELETE/PATCH للـAudit** (NFR-005)؛ الواجهة: تبويب "سجل العمليات" في SCR-04 (`AuditTab.tsx`) | ✅ منفّذ (M8.1). |
+| ACT-17 (تعديل الإعدادات) | `GET`/`PATCH /admin/settings` بـ `requireRole('ADMIN')` في `apps/api/src/routes/settings.ts`؛ يعدّل `closingReminderDays` (1..60) في `SystemSetting` ويسجّل `SETTINGS_UPDATED`؛ الواجهة: SCR-09 (`SettingsPage.tsx`). الـcron يقرأ القيمة حيًّا عبر `getReminderDays()` | ✅ منفّذ (BR-009 قابل للتعديل من الواجهة). |
+| — (فلتر المسؤول) | `GET /users` (id/name/role) بـ `requireAuth` لتغذية قائمة فلتر "المسؤول الحالي" في SCR-03 — دون كشف البريد | ✅ منفّذ. |
 
 </div>
