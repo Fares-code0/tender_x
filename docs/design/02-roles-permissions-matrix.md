@@ -40,6 +40,7 @@
 | ACT-12 | إدارة المستخدمين والأدوار | — | ✅ (ADMIN) |
 | ACT-13 | رفع/إدارة المرفقات | — | ✅ (WRITER للرفع؛ التحميل لأي مستخدم مصادَق) |
 | ACT-14 | عرض/تعليم الإشعارات كمقروءة | — | ✅ (أي مستخدم مصادَق — إشعاراته فقط) |
+| ACT-15 | عرض لوحة المعلومات والتقارير (وتصدير CSV) | — | ✅ (لوحة المعلومات: أي مصادَق؛ التقارير: MANAGER/OWNER/ADMIN) |
 
 - ✅ **منفّذ**: يوجد endpoint فعلي في الكود يفرض هذا الإجراء.
 - 🔷 **مخطّط**: موثّق كمتطلب ولم يُنفَّذ بعد (لا يوجد endpoint خاص به حاليًا).
@@ -65,6 +66,10 @@
 | ACT-13 | رفع المرفقات | لا | نعم | لا | لا | لا |
 | ACT-13 | تحميل المرفقات | نعم | نعم | نعم | نعم | نعم |
 | ACT-14 | عرض/تعليم الإشعارات | نعم | نعم | نعم | نعم | نعم |
+| ACT-15 | عرض لوحة المعلومات | نعم | نعم | نعم | نعم | نعم |
+| ACT-15 | عرض التقارير + تصدير CSV | لا | لا | نعم | نعم | نعم |
+
+> **ملاحظة على ACT-15:** لوحة المعلومات (`GET /dashboard`, SCR-02) متاحة لأي مستخدم مصادَق ومحتواها يتكيّف مع الدور؛ أما التقارير (`GET /reports/summary`, SCR-08) وتصدير الـCSV فمقصورة على MANAGER/OWNER/ADMIN.
 
 > **ملاحظة على ACT-13:** الرفع (`POST /tenders/:id/attachments`) مقصور على **WRITER**؛ أما التحميل (`GET /attachments/:id/download`) وقائمة المرفقات (`GET /tenders/:id/attachments`) فمتاحان لأي مستخدم مصادَق (`requireAuth`). وACT-14 (الإشعارات) يرى كل مستخدم **إشعاراته هو فقط** — لا يمكن قراءة إشعارات مستخدم آخر (404).
 
@@ -126,5 +131,6 @@
 | ACT-12 (إدارة المستخدمين والأدوار) | `GET/POST/PATCH /admin/users` محروسة جميعًا بـ `requireAuth, requireRole('ADMIN')` في `apps/api/src/routes/adminUsers.ts` | ✅ مطابق للمصفوفة — لا فجوة. |
 | ACT-13 (رفع/إدارة المرفقات) | `POST /tenders/:id/attachments` (multipart) محروس بـ `requireRole('WRITER')`، خلف `StorageService` (`services/storage.ts`، قرص محلي قابل للاستبدال بـS3)، مع قيود النوع (pdf/docx/xlsx/png/jpg/zip) والحجم (20MB) وversioning؛ `GET /tenders/:id/attachments` و`GET /attachments/:id/download` بـ `requireAuth` | ✅ منفّذ (M5.1–M5.3). التحميل متاح لأي مستخدم مصادَق حسب المصفوفة. |
 | ACT-14 (عرض/تعليم الإشعارات) | `GET /notifications` (قائمة + عدّاد غير المقروء) و`POST /notifications/:id/read` محروسان بـ `requireAuth` في `apps/api/src/routes/notifications.ts`؛ التعليم كمقروء مقصور على صاحب الإشعار (404 لغيره). الإشعارات تُولَّد من `NotificationService` (`services/notifications.ts`) عند أحداث سير العمل + job الإغلاق (BR-009) | ✅ منفّذ (M6.1/M6.3). |
+| ACT-15 (لوحة المعلومات والتقارير) | `GET /dashboard` بـ `requireAuth` (محتوى حسب الدور) و`GET /reports/summary` بـ `requireRole('MANAGER','OWNER','ADMIN')` في `apps/api/src/routes/{dashboard,reports}.ts`؛ حساب الإحصائيات في `services/stats.ts`؛ تصدير CSV في الواجهة (`ReportsPage.tsx`) | ✅ منفّذ (M7.1/M7.2/M7.4). |
 
 </div>
