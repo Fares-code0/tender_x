@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "tender-web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--dir", "apps/web", "dev"],
+      "port": 5174
+    },
+    {
+      "name": "tender-api",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--dir", "apps/api", "dev"],
+      "port": 4000
+    }
+  ]
+}
