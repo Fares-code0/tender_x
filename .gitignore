@@ -8,3 +8,4 @@ coverage/
 .pgdata/
 uploads/
 *.log
+.claude/ 

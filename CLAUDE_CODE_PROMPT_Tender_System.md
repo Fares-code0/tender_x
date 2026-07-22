@@ -76,7 +76,7 @@ Submitted → (Won | Lost)
 **هيكل المشروع:** Monorepo
 
 ```
-tender-system/
+Tender/
 ├── apps/
 │   ├── api/          # Express backend
 │   └── web/          # React frontend
