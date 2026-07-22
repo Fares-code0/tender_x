@@ -22,10 +22,9 @@
 - **Stack موجود فعلًا:** Express 4 + TS، Prisma 6 + PostgreSQL، JWT في httpOnly cookie، bcrypt، Zod، Helmet، CORS، express-rate-limit، multer (قرص محلي)، node-cron.
 - **غائب فعلًا (grep=0):** Redis، Queue/BullMQ، logging منظّم (pino/winston)، correlation IDs، `process.on/SIGTERM`، `trust proxy`، `.github/` (CI)، Dockerfile للتطبيق، metrics/tracing.
 - **درجات التدقيق:** Architecture 62 · Security 56 · Performance 60 · Scalability 40 · Maintainability 66 · Tests 78 · **Production Readiness 47**.
-- **الحكم:** _Requires Significant Improvements_ للنشر المؤسسي/الأفقي؛ قريب من _Production with Minor Fixes_ لنسخة واحدة داخلية خلف بروكسي موثوق بعد إنجاز H0.
+- **الحكم:** *Requires Significant Improvements* للنشر المؤسسي/الأفقي؛ قريب من *Production with Minor Fixes* لنسخة واحدة داخلية خلف بروكسي موثوق بعد إنجاز H0.
 
 ### مفتاح الأولوية
-
 🔴 **CRITICAL/HIGH** (يمنع الإنتاج) · 🟠 **MEDIUM** (يجب قبل التوسّع) · 🟡 **LOW** (تحسين)
 
 ---
@@ -177,7 +176,6 @@
 ---
 
 ## 🚫 خارج النطاق (ما لم نتفق عليه)
-
 - تغيير قاعدة البيانات أو ORM.
 - Microservices/إعادة كتابة كاملة.
 - ميزات منتج جديدة (المهمة تقوية لا توسعة).
@@ -186,45 +184,45 @@
 
 ## 📊 لوحة تقدّم التقوية (حدّثها بعد كل Milestone)
 
-| Milestone                | الأولوية | الحالة     | تاريخ الإنجاز | ملاحظات                      |
-| ------------------------ | -------- | ---------- | ------------- | ---------------------------- |
-| H0 — مكاسب أمنية سريعة   | 🔴       | ⬜ لم يبدأ | —             | env/proxy/shutdown/readiness |
-| H1 — Auth/AuthZ          | 🔴/🟠    | ⬜ لم يبدأ | —             | BOLA/CSRF/refresh/كلمة مرور  |
-| H2 — Rate limiting موزّع | 🟠       | ⬜ لم يبدأ | —             | يحتاج Redis (موافقة)         |
-| H3 — Observability       | 🟠       | ⬜ لم يبدأ | —             | logging/metrics/traceIDs     |
-| H4 — الأداء              | 🟠       | ⬜ لم يبدأ | —             | SQL agg/N+1/pagination       |
-| H5 — القابلية للتوسّع    | 🟠       | ⬜ لم يبدأ | —             | S3/cron موزّع                |
-| H6 — إعادة الهيكلة       | 🟠/🟡    | ⬜ لم يبدأ | —             | repo/service/v1/OpenAPI      |
-| H7 — DevOps/CI-CD        | 🟠       | ⬜ لم يبدأ | —             | Docker/Actions/أسرار         |
-| H8 — التحقق النهائي      | ✅       | ⬜ لم يبدأ | —             | إعادة تدقيق + tag v2.0.0     |
+| Milestone | الأولوية | الحالة | تاريخ الإنجاز | ملاحظات |
+| --------- | -------- | ------ | ------------- | ------- |
+| H0 — مكاسب أمنية سريعة | 🔴 | ⬜ لم يبدأ | — | env/proxy/shutdown/readiness |
+| H1 — Auth/AuthZ | 🔴/🟠 | ⬜ لم يبدأ | — | BOLA/CSRF/refresh/كلمة مرور |
+| H2 — Rate limiting موزّع | 🟠 | ⬜ لم يبدأ | — | يحتاج Redis (موافقة) |
+| H3 — Observability | 🟠 | ⬜ لم يبدأ | — | logging/metrics/traceIDs |
+| H4 — الأداء | 🟠 | ⬜ لم يبدأ | — | SQL agg/N+1/pagination |
+| H5 — القابلية للتوسّع | 🟠 | ⬜ لم يبدأ | — | S3/cron موزّع |
+| H6 — إعادة الهيكلة | 🟠/🟡 | ⬜ لم يبدأ | — | repo/service/v1/OpenAPI |
+| H7 — DevOps/CI-CD | 🟠 | ⬜ لم يبدأ | — | Docker/Actions/أسرار |
+| H8 — التحقق النهائي | ✅ | ⬜ لم يبدأ | — | إعادة تدقيق + tag v2.0.0 |
 
 ---
 
 ## 🗺️ خريطة البنود ↔ نتائج التدقيق (Traceability)
 
-| البند  | Finding | الدليل (file:line)               | الخطورة |
-| ------ | ------- | -------------------------------- | ------- |
-| H0.1   | #1      | `lib/env.ts:17`                  | 🔴      |
-| H0.2   | #2      | `app.ts` (لا trust proxy)        | 🔴      |
-| H0.3   | #6      | `index.ts` (لا SIGTERM)          | 🔴      |
-| H0.4   | #7      | `app.ts:31`                      | 🟠      |
-| H0.5   | #19     | `app.ts:50`                      | 🟡      |
-| H1.1   | #3      | `routes/attachments.ts` download | 🔴      |
-| H1.2   | #18     | `routes/auth.ts:28`              | 🟠      |
-| H1.3   | #12     | `env.ts:18` + `auth.ts` logout   | 🟠      |
-| H1.4   | #17     | `schemas/auth.ts` min(8)         | 🟠      |
-| H2.1/2 | #4      | `app.ts:36` MemoryStore          | 🟠      |
-| H3.1/2 | #10     | `errors.ts:40`, `index.ts`       | 🟠      |
-| H3.3/4 | #11     | (grep=0 metrics/otel)            | 🟠      |
-| H4.1   | #9      | `services/stats.ts:31,53`        | 🟠      |
-| H4.2   | #9      | `routes/reports.ts:52-56`        | 🟠      |
-| H4.3   | #9      | `tenders.ts:683`, `users.ts`     | 🟠      |
-| H4.4   | #14     | `lib/prisma.ts`                  | 🟠      |
-| H4.5   | #15     | `routes/attachments.ts`          | 🟠      |
-| H5.1   | #5      | `services/storage.ts`            | 🟠      |
-| H5.2   | #8      | `index.ts:13`                    | 🟠      |
-| H6.x   | #13,#20 | `routes/tenders.ts` (709)        | 🟠/🟡   |
-| H7.x   | #16     | لا `.github/`، لا Dockerfile     | 🟠      |
+| البند | Finding | الدليل (file:line) | الخطورة |
+|---|---|---|---|
+| H0.1 | #1 | `lib/env.ts:17` | 🔴 |
+| H0.2 | #2 | `app.ts` (لا trust proxy) | 🔴 |
+| H0.3 | #6 | `index.ts` (لا SIGTERM) | 🔴 |
+| H0.4 | #7 | `app.ts:31` | 🟠 |
+| H0.5 | #19 | `app.ts:50` | 🟡 |
+| H1.1 | #3 | `routes/attachments.ts` download | 🔴 |
+| H1.2 | #18 | `routes/auth.ts:28` | 🟠 |
+| H1.3 | #12 | `env.ts:18` + `auth.ts` logout | 🟠 |
+| H1.4 | #17 | `schemas/auth.ts` min(8) | 🟠 |
+| H2.1/2 | #4 | `app.ts:36` MemoryStore | 🟠 |
+| H3.1/2 | #10 | `errors.ts:40`, `index.ts` | 🟠 |
+| H3.3/4 | #11 | (grep=0 metrics/otel) | 🟠 |
+| H4.1 | #9 | `services/stats.ts:31,53` | 🟠 |
+| H4.2 | #9 | `routes/reports.ts:52-56` | 🟠 |
+| H4.3 | #9 | `tenders.ts:683`, `users.ts` | 🟠 |
+| H4.4 | #14 | `lib/prisma.ts` | 🟠 |
+| H4.5 | #15 | `routes/attachments.ts` | 🟠 |
+| H5.1 | #5 | `services/storage.ts` | 🟠 |
+| H5.2 | #8 | `index.ts:13` | 🟠 |
+| H6.x | #13,#20 | `routes/tenders.ts` (709) | 🟠/🟡 |
+| H7.x | #16 | لا `.github/`، لا Dockerfile | 🟠 |
 
 ---
 
@@ -232,12 +230,11 @@
 
 | التاريخ | Milestone | المشكلة | الحل |
 | ------- | --------- | ------- | ---- |
-| —       | —         | —       | —    |
+| — | — | — | — |
 
 ---
 
 ## ✋ نقاط توقّف إلزامية (اسألني قبل المتابعة)
-
 1. **قبل H2:** موافقة على إدخال **Redis** (rate limit موزّع/cache) — تغيير بنية.
 2. **قبل H5.1:** اختيار مزوّد التخزين الكائني (S3/R2/MinIO) وبيانات الاعتماد.
 3. **قبل H6.2:** مراجعة خطة تفكيك `tenders.ts` قبل إعادة الهيكلة الكبيرة.
