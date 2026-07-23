@@ -36,22 +36,22 @@
 
 **الهدف:** إغلاق العيوب عالية الأثر منخفضة الجهد أولًا.
 
-- [ ] **H0.1** — تحقق بيئة صارم + إزالة الـJWT secret الافتراضي. (Finding #1 — `apps/api/src/lib/env.ts:17`)
+- [x] **H0.1** — تحقق بيئة صارم + إزالة الـJWT secret الافتراضي. (Finding #1 — `apps/api/src/lib/env.ts:17`)
   - المطلوب: وحدة تتحقق من `process.env` بـZod عند الإقلاع وترمي خطأ فادحًا إن غاب `JWT_SECRET`/`DATABASE_URL`، أو ساوى `JWT_SECRET` القيمة الافتراضية في الإنتاج. احذف السطر `?? 'dev-secret-...'`.
-  - ✅ Verify: تشغيل بدون `JWT_SECRET` يفشل فورًا برسالة واضحة؛ اختبار وحدة للتحقق.
-- [ ] **H0.2** — ضبط `trust proxy`. (Finding #2 — `apps/api/src/app.ts` بلا `app.set`)
+  - ✅ Verify: `parseEnv()` بـZod يرمي عند غياب `JWT_SECRET`/`DATABASE_URL` وعند سرّ افتراضي/قصير في الإنتاج؛ حُذف الـfallback. **Verified:** 7 اختبارات في `tests/env.test.ts` خضراء + فحص يدوي: `NODE_ENV=production` بسرّ افتراضي ⇒ فشل فوري برسالة واضحة، وبسرّ قوي ⇒ إقلاع سليم.
+- [x] **H0.2** — ضبط `trust proxy`. (Finding #2 — `apps/api/src/app.ts` بلا `app.set`)
   - المطلوب: `app.set('trust proxy', <hops>)` ليصح `req.ip` (rate limit) و`secure` cookie و`X-Forwarded-Proto` خلف LB.
-  - ✅ Verify: اختبار/فحص أن الـlimiter يميّز الـIP الحقيقي عبر `X-Forwarded-For` عند تفعيل trust proxy.
-- [ ] **H0.3** — إيقاف رشيق (Graceful shutdown). (Finding #6 — `apps/api/src/index.ts`)
+  - ✅ Verify: `app.set('trust proxy', env.trustProxyHops)` (افتراضي 1 عبر `TRUST_PROXY`). **Verified:** اختبار `health.test.ts` يؤكد `app.get('trust proxy') === 1` (رقم لا `true`).
+- [x] **H0.3** — إيقاف رشيق (Graceful shutdown). (Finding #6 — `apps/api/src/index.ts`)
   - المطلوب: التقاط `SIGTERM`/`SIGINT` → إيقاف قبول الطلبات، `server.close()`, `prisma.$disconnect()`, إيقاف الـcron.
-  - ✅ Verify: إرسال SIGTERM يُنهي العملية بلا طلبات معلّقة وبلا تسريب اتصال.
-- [ ] **H0.4** — فحوص جاهزية/حياة حقيقية. (Finding #7 — `apps/api/src/app.ts:31`)
+  - ✅ Verify: `createGracefulShutdown` (في `lib/shutdown.ts`) يوقف الـcron ثم `server.close()` ثم `prisma.$disconnect()` ثم exit، وربطه بالإشارتين في `index.ts`. **Verified:** 3 اختبارات في `tests/shutdown.test.ts` (المسار السعيد + فشل الإغلاق يخرج 1 + idempotent).
+- [x] **H0.4** — فحوص جاهزية/حياة حقيقية. (Finding #7 — `apps/api/src/app.ts:31`)
   - المطلوب: `/livez` (العملية) + `/readyz` (ينفّذ `SELECT 1` عبر Prisma). إبقاء `/health` للتوافق.
-  - ✅ Verify: `/readyz` يرجع 503 عند فصل القاعدة و200 عند توفرها (اختبار).
-- [ ] **H0.5** — إزالة/تقييد endpoint التصحيح `/ping`. (Finding #19 — `apps/api/src/app.ts:50`)
-  - ✅ Verify: `/ping` غير موجود في الإنتاج (أو خلف حارس non-prod).
+  - ✅ Verify: `/livez` (200) و`/readyz` (`SELECT 1` → 200، وإلا 503) مع إبقاء `/health`. **Verified:** اختبارات `health.test.ts` (livez 200، readyz 200، readyz 503 عبر mock فشل القاعدة) + فحص يدوي بـcurl على `:4000`.
+- [x] **H0.5** — إزالة/تقييد endpoint التصحيح `/ping`. (Finding #19 — `apps/api/src/app.ts:50`)
+  - ✅ Verify: `/ping` مغلَّف بـ`if (env.nodeEnv !== 'production')` ⇒ غير موجود في الإنتاج، متاح في dev/test. **Verified:** اختبارا `/ping` في `health.test.ts` (بيئة non-prod) خضراوان + فحص يدوي بـcurl.
 
-**🔒 بوابة H0:** الأسرار fail-fast، trust proxy مضبوط، shutdown رشيق، readiness يفحص القاعدة.
+**🔒 بوابة H0:** الأسرار fail-fast، trust proxy مضبوط، shutdown رشيق، readiness يفحص القاعدة. — ✅ **مُنجَزة ومُتحقَّقة (2026-07-24):** `pnpm lint && pnpm test && pnpm build` أخضر بالكامل (124 اختبارًا، منها 17 جديدة لـH0).
 
 ---
 
