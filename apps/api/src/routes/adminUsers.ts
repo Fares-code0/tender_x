@@ -26,7 +26,7 @@ adminUsersRouter.post('/', async (req, res, next) => {
     const input = validate(createUserSchema, req.body);
     const exists = await prisma.user.findUnique({ where: { email: input.email } });
     if (exists) throw new AppError(409, 'EMAIL_TAKEN', 'هذا البريد الإلكتروني مستخدم بالفعل');
-    const passwordHash = await bcrypt.hash(input.password, 10);
+    const passwordHash = await bcrypt.hash(input.password, 12);
     const user = await prisma.user.create({
       data: { name: input.name, email: input.email, role: input.role, passwordHash },
       select: publicUser,
@@ -51,7 +51,7 @@ adminUsersRouter.patch('/:id', async (req, res, next) => {
     if (input.name !== undefined) data.name = input.name;
     if (input.role !== undefined) data.role = input.role;
     if (input.isActive !== undefined) data.isActive = input.isActive;
-    if (input.password !== undefined) data.passwordHash = await bcrypt.hash(input.password, 10);
+    if (input.password !== undefined) data.passwordHash = await bcrypt.hash(input.password, 12);
     const user = await prisma.user.update({
       where: { id: target.id },
       data,

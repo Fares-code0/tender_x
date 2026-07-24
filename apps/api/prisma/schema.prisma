@@ -170,3 +170,13 @@ model SystemSetting {
   value     String
   updatedAt DateTime @updatedAt
 }
+
+// H1.3 — قائمة إبطال التوكنات (jti denylist): logout يُبطل التوكن فعليًا حتى قبل انتهائه
+model RevokedToken {
+  jti       String   @id
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+}

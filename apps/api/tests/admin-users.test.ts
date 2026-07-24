@@ -72,6 +72,19 @@ describe('Admin users API (M1.5)', () => {
     expect(login.body.error.code).toBe('ACCOUNT_DISABLED');
   });
 
+  // H1.4 — strong password policy: a weak password is rejected
+  it('rejects a weak password with 422', async () => {
+    const admin = await createUser('ADMIN');
+    const cookie = await loginAs(app, admin.email);
+    const res = await request(app).post('/admin/users').set('Cookie', cookie).send({
+      name: 'كلمة ضعيفة',
+      email: 'weakpass@test.com',
+      password: 'weak',
+      role: 'WRITER',
+    });
+    expect(res.status).toBe(422);
+  });
+
   it('admin changes a user role', async () => {
     const admin = await createUser('ADMIN');
     const target = await createUser('WRITER');

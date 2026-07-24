@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
+import type { Role } from '@prisma/client';
 import {
   MAX_ATTACHMENT_BYTES,
   MAX_ATTACHMENT_MB,
@@ -42,14 +43,32 @@ export function mapUploadError(err: unknown): AppError {
   return new AppError(422, 'UPLOAD_ERROR', 'تعذر رفع الملف');
 }
 
-// M5.2 — تحميل مرفق (للمصرح لهم فقط: أي مستخدم مصادَق)
+// M5.2 — تحميل مرفق. H1.1 — مقيَّد بعلاقة المستخدم بالمناقصة (إصلاح BOLA)
 export const attachmentsRouter = Router();
 attachmentsRouter.use(requireAuth);
 
+// الأدوار الإشرافية التي تقرأ كل المناقصات (مطابق لسياسة القراءة في مستند 02)
+const DOWNLOAD_SUPERVISORY_ROLES: Role[] = ['QA', 'MANAGER', 'OWNER', 'ADMIN'];
+
 attachmentsRouter.get('/:id/download', async (req, res, next) => {
   try {
-    const attachment = await prisma.attachment.findUnique({ where: { id: req.params.id } });
+    const attachment = await prisma.attachment.findUnique({
+      where: { id: req.params.id },
+      include: { tender: { select: { createdById: true, currentAssigneeId: true } } },
+    });
     if (!attachment) throw new AppError(404, 'NOT_FOUND', 'المرفق غير موجود');
+
+    // H1.1 — يُسمح بالتنزيل للأدوار الإشرافية، أو منشئ المناقصة، أو مسؤولها الحالي،
+    // أو من رفع المرفق نفسه؛ وإلا 403 (إصلاح الوصول المباشر بالمعرّف)
+    const u = req.user!;
+    const allowed =
+      DOWNLOAD_SUPERVISORY_ROLES.includes(u.role) ||
+      attachment.uploadedById === u.id ||
+      attachment.tender.createdById === u.id ||
+      attachment.tender.currentAssigneeId === u.id;
+    if (!allowed) {
+      throw new AppError(403, 'FORBIDDEN', 'ليست لديك صلاحية لتنزيل هذا المرفق');
+    }
 
     let data: Buffer;
     try {

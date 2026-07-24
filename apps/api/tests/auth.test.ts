@@ -57,4 +57,28 @@ describe('Auth API (M1.3)', () => {
     expect(res.status).toBe(200);
     expect(String(res.headers['set-cookie'])).toMatch(/token=;/);
   });
+
+  // H1.2 — CSRF hardening: the session cookie is SameSite=Strict
+  it('login cookie is SameSite=Strict', async () => {
+    const user = await createUser('QA');
+    const res = await request(app)
+      .post('/auth/login')
+      .send({ email: user.email, password: TEST_PASSWORD });
+    expect(String(res.headers['set-cookie']).toLowerCase()).toContain('samesite=strict');
+  });
+
+  // H1.3 — session revocation: a token reused after logout is rejected even before it expires
+  it('revokes the token on logout (reused token → 401)', async () => {
+    const user = await createUser('QA');
+    const cookie = await loginAs(app, user.email);
+
+    const before = await request(app).get('/auth/me').set('Cookie', cookie);
+    expect(before.status).toBe(200);
+
+    const out = await request(app).post('/auth/logout').set('Cookie', cookie);
+    expect(out.status).toBe(200);
+
+    const after = await request(app).get('/auth/me').set('Cookie', cookie);
+    expect(after.status).toBe(401);
+  });
 });

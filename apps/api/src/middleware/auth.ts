@@ -25,11 +25,16 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
   try {
     const token = req.cookies?.token as string | undefined;
     if (!token) throw new AppError(401, 'UNAUTHENTICATED', 'يجب تسجيل الدخول');
-    let payload: { sub?: string };
+    let payload: { sub?: string; jti?: string };
     try {
-      payload = jwt.verify(token, env.jwtSecret) as { sub?: string };
+      payload = jwt.verify(token, env.jwtSecret) as { sub?: string; jti?: string };
     } catch {
       throw new AppError(401, 'UNAUTHENTICATED', 'جلسة غير صالحة، سجّل الدخول مجددًا');
+    }
+    // H1.3 — رفض التوكن المُبطَل (denylist) حتى قبل انتهاء صلاحيته
+    if (payload.jti) {
+      const revoked = await prisma.revokedToken.findUnique({ where: { jti: payload.jti } });
+      if (revoked) throw new AppError(401, 'UNAUTHENTICATED', 'انتهت الجلسة، سجّل الدخول مجددًا');
     }
     const user = await prisma.user.findUnique({ where: { id: payload.sub ?? '' } });
     if (!user || !user.isActive) {

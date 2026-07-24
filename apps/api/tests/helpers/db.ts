@@ -12,7 +12,7 @@ export async function resetDb() {
     TRUNCATE TABLE
       "TenderChecklistAnswer", "ChecklistItem", "ChecklistTemplate",
       "Attachment", "Notification", "AuditLog", "TenderStatusHistory",
-      "Tender", "User", "SystemSetting"
+      "Tender", "User", "SystemSetting", "RevokedToken"
     CASCADE
   `);
 }

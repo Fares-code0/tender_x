@@ -132,6 +132,27 @@ describe('GET list + download (M5.2)', () => {
     expect(res.headers['content-disposition']).toContain('file.pdf');
     expect(res.body.toString()).toBe('hello pdf content');
   });
+
+  // H1.1 — BOLA fixed: an unrelated user cannot download by guessing the id
+  it('an unrelated writer cannot download (BOLA): 403', async () => {
+    const { attachmentId } = await uploadOne(app);
+    const outsider = await createUser('WRITER');
+    const cookie = await loginAs(app, outsider.email);
+    const res = await request(app)
+      .get(`/attachments/${attachmentId}/download`)
+      .set('Cookie', cookie);
+    expect(res.status).toBe(403);
+  });
+
+  it('a supervisory role (MANAGER) can download any attachment', async () => {
+    const { attachmentId } = await uploadOne(app);
+    const manager = await createUser('MANAGER');
+    const cookie = await loginAs(app, manager.email);
+    const res = await request(app)
+      .get(`/attachments/${attachmentId}/download`)
+      .set('Cookie', cookie);
+    expect(res.status).toBe(200);
+  });
 });
 
 describe('Versioning (M5.3)', () => {
