@@ -7,7 +7,8 @@
 # (متغيرات بيئة/دور IAM). راجع H7.3.
 
 # ---------- 1) التبعيات ----------
-FROM node:20-bookworm-slim AS deps
+# pnpm 11 يشترط Node >= 22.13، ومراحل البناء تشغّله عبر corepack
+FROM node:22-bookworm-slim AS deps
 WORKDIR /app
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
@@ -35,7 +36,7 @@ RUN pnpm --filter @tender/api build
 RUN pnpm --filter @tender/api --prod deploy --legacy /app/deploy
 
 # ---------- 3) التشغيل ----------
-FROM node:20-bookworm-slim AS runtime
+FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
