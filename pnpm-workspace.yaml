@@ -20,7 +20,12 @@ auditConfig:
     - GHSA-qwww-vcr4-c8h2
 
 allowBuilds:
+  # embedded-postgres يُستخدم للتطوير المحلي (`pnpm db:start`)؛ نسمح ببنائه على كل
+  # المنصّات وإلا فشل التثبيت على Linux (CI) بـERR_PNPM_IGNORED_BUILDS.
   '@embedded-postgres/windows-x64': true
+  '@embedded-postgres/linux-x64': true
+  '@embedded-postgres/darwin-x64': true
+  '@embedded-postgres/darwin-arm64': true
   '@prisma/client': true
   '@prisma/engines': true
   # H6.4 — يأتي ضمن سلسلة swagger-ui-express، وسكربت تثبيته يرسل بيانات تحليلية.
