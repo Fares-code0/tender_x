@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { fetchTender } from '../api/tenders';
 import { isTenderEditable } from '@tender/shared';
+import { isSafeExternalUrl } from '../lib/safeUrl';
 import { useMe } from '../hooks/useAuth';
 import { StatusBadge } from '../components/StatusBadge';
 import { ReviewTab } from '../components/ReviewTab';
@@ -107,15 +108,23 @@ export function TenderDetailsPage() {
                 <div className="sm:col-span-2">
                   <dt className="text-slate-500">الرابط</dt>
                   <dd className="mt-0.5">
-                    <a
-                      href={t.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      dir="ltr"
-                      className="font-medium text-indigo-700 hover:underline"
-                    >
-                      {t.url}
-                    </a>
+                    {/* دفاع في العمق: المخطط يمنع `javascript:` عند الحفظ، لكن صفوفًا
+                        قديمة قد تسبق ذلك التحقق — فلا نجعلها رابطًا قابلًا للنقر. */}
+                    {isSafeExternalUrl(t.url) ? (
+                      <a
+                        href={t.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        dir="ltr"
+                        className="font-medium text-indigo-700 hover:underline"
+                      >
+                        {t.url}
+                      </a>
+                    ) : (
+                      <span dir="ltr" className="font-medium text-slate-700" title="رابط غير آمن">
+                        {t.url}
+                      </span>
+                    )}
                   </dd>
                 </div>
               )}

@@ -36,6 +36,9 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+    # H7.3 — لا أسرار حقيقية هنا عمدًا: القاعدة مؤقتة داخل الـrunner والسرّ اختباري
+    # صريح. حقن السرّ الحقيقي في وظيفة اختبار يوسّع سطح التعرّض بلا فائدة.
+    # أسرار النشر (عند إضافته) تُقرأ من GitHub Secrets — راجع docs/operations/secrets.md
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/tender_test
       JWT_SECRET: ci-only-secret-not-used-in-any-real-environment

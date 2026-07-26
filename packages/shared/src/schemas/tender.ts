@@ -1,5 +1,31 @@
 import { z } from 'zod';
 
+/**
+ * رابط خارجي آمن للعرض.
+ *
+ * ⚠️ `z.string().url()` وحدها **لا تكفي**: تقبل `javascript:` و`data:` و`vbscript:`
+ * لأنها تتحقق من صلاحية الـURL لا من مخططه. وبما أن الرابط يُعرض في الواجهة داخل
+ * `<a href>`، فإن قبول `javascript:` يفتح ثغرة **XSS مخزَّنة** (يحفظها مستخدم
+ * ويُنفَّذ السكربت في جلسة من يفتح المناقصة ويضغط الرابط).
+ * لذلك نقصر المخطط على `http`/`https` صراحةً.
+ */
+const SAFE_URL_PROTOCOLS = ['http:', 'https:'];
+
+export const externalUrlSchema = z
+  .string()
+  .trim()
+  .url('رابط غير صالح')
+  .refine(
+    (value) => {
+      try {
+        return SAFE_URL_PROTOCOLS.includes(new URL(value).protocol.toLowerCase());
+      } catch {
+        return false;
+      }
+    },
+    { message: 'يجب أن يبدأ الرابط بـhttp أو https' },
+  );
+
 export const TENDER_STATUSES = [
   'NEW',
   'UNDER_REVIEW',
@@ -39,12 +65,7 @@ export const createTenderSchema = z.object({
     errorMap: () => ({ message: 'موعد الإغلاق مطلوب' }),
   }),
   source: z.string().trim().max(200, 'المصدر طويل جدًا').optional().or(z.literal('').transform(() => undefined)),
-  url: z
-    .string()
-    .trim()
-    .url('رابط غير صالح')
-    .optional()
-    .or(z.literal('').transform(() => undefined)),
+  url: externalUrlSchema.optional().or(z.literal('').transform(() => undefined)),
   description: z.string().trim().max(5000, 'الوصف طويل جدًا').optional().or(z.literal('').transform(() => undefined)),
 });
 export type CreateTenderInput = z.infer<typeof createTenderSchema>;
@@ -57,7 +78,7 @@ export const updateTenderSchema = z
       .date({ errorMap: () => ({ message: 'موعد الإغلاق غير صالح' }) })
       .optional(),
     source: z.string().trim().max(200).nullable().optional(),
-    url: z.string().trim().url('رابط غير صالح').nullable().optional(),
+    url: externalUrlSchema.nullable().optional(),
     description: z.string().trim().max(5000).nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'لا يوجد أي حقل للتعديل' });
