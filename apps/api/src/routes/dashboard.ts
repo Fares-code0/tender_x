@@ -4,6 +4,8 @@ import { prisma } from '../lib/prisma';
 import { requireAuth } from '../middleware/auth';
 import { computeAggregateStats } from '../services/stats';
 import { getReminderDays } from '../services/closingReminder';
+import { cached, CACHE_KEYS } from '../lib/cache';
+import { getRedisClient } from '../lib/redis';
 
 export const dashboardRouter = Router();
 dashboardRouter.use(requireAuth);
@@ -54,7 +56,10 @@ dashboardRouter.get('/', async (req, res, next) => {
     }
 
     // إحصائيات شاملة للرسوم البيانية (توزيع الحالات + شهريًا) لكل الأدوار
-    const stats = await computeAggregateStats();
+    // H5.3 — قراءة ساخنة مكلفة تتغيّر ببطء ⇒ تُخدَّم من كاش Redis قصير المدة
+    const stats = await cached(getRedisClient(), CACHE_KEYS.aggregateStats, () =>
+      computeAggregateStats(),
+    );
     body.statusDistribution = stats.byStatus;
     body.monthly = stats.monthly;
     body.total = stats.total;

@@ -2,6 +2,9 @@ import fs from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import path from 'node:path';
 import type { Readable } from 'node:stream';
+import { S3Client } from '@aws-sdk/client-s3';
+import { env } from '../lib/env';
+import { S3Storage } from './s3Storage';
 
 /**
  * M5.1 — طبقة تجريد للتخزين (StorageService).
@@ -68,4 +71,18 @@ const uploadsDir = process.env.UPLOADS_DIR
   ? path.resolve(process.env.UPLOADS_DIR)
   : path.resolve(process.cwd(), 'uploads');
 
-export const storage: StorageService = new LocalDiskStorage(uploadsDir);
+export { LocalDiskStorage };
+
+/**
+ * H5.1 — اختيار محوّل التخزين: S3 عند ضبط `S3_BUCKET` (مطلوب للنشر الأفقي)،
+ * وإلا القرص المحلي (تطوير/نسخة واحدة). الاستيراد كسول حتى لا تُحمَّل حزمة AWS
+ * في التطوير والاختبارات.
+ */
+function createStorage(): StorageService {
+  if (!env.s3Bucket) return new LocalDiskStorage(uploadsDir);
+  // الاعتماديات من سلسلة AWS الافتراضية (دور IAM أو متغيرات البيئة) — لا مفاتيح في الكود
+  const client = new S3Client({ region: env.awsRegion });
+  return new S3Storage(env.s3Bucket, client, env.s3Prefix ?? '');
+}
+
+export const storage: StorageService = createStorage();

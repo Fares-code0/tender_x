@@ -48,6 +48,13 @@ const envSchema = z.object({
   // H4.4 — تجمّع اتصالات Prisma (يُضاف إلى DATABASE_URL). خلف PgBouncer اضبط 1.
   DB_CONNECTION_LIMIT: z.coerce.number().int().positive().optional(),
   DB_POOL_TIMEOUT: z.coerce.number().int().nonnegative().optional(),
+  // H5.1 — تخزين كائني على S3. عند ضبط S3_BUCKET يُستخدم S3 بدل القرص المحلي.
+  // الاعتماديات تأتي من سلسلة AWS الافتراضية (دور IAM / متغيرات AWS_*) — لا مفاتيح هنا.
+  S3_BUCKET: z.string().min(1).optional(),
+  S3_PREFIX: z.string().optional(),
+  AWS_REGION: z.string().min(1).optional(),
+  // H5.3 — مدة صلاحية الكاش للقراءات الساخنة (ثوانٍ)
+  CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(30),
 });
 
 export interface Env {
@@ -67,6 +74,10 @@ export interface Env {
   logLevel: string;
   dbConnectionLimit?: number;
   dbPoolTimeout?: number;
+  s3Bucket?: string;
+  s3Prefix?: string;
+  awsRegion?: string;
+  cacheTtlSeconds: number;
 }
 
 /**
@@ -107,6 +118,10 @@ export function parseEnv(source: NodeJS.ProcessEnv = process.env): Env {
     logLevel: v.LOG_LEVEL ?? (v.NODE_ENV === 'test' ? 'silent' : 'info'),
     dbConnectionLimit: v.DB_CONNECTION_LIMIT,
     dbPoolTimeout: v.DB_POOL_TIMEOUT,
+    s3Bucket: v.S3_BUCKET,
+    s3Prefix: v.S3_PREFIX,
+    awsRegion: v.AWS_REGION,
+    cacheTtlSeconds: v.CACHE_TTL_SECONDS,
   };
 }
 
