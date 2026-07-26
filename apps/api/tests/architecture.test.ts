@@ -39,4 +39,31 @@ describe('Architecture: routes must not touch Prisma directly (H6.1)', () => {
     // على الأقل مستودع واحد يصل فعلًا إلى Prisma (وإلا فالطبقة صورية)
     expect(repos.some((r) => /\bprisma\./.test(r.content))).toBe(true);
   });
+
+  it('no route reaches models through a transaction client either', async () => {
+    // `prisma.` وحده لا يكفي: `tx.tender.update(...)` تجاوز الطبقة أيضًا
+    const files = await readAll(path.join(srcDir, 'routes'));
+    const offenders = files
+      .filter((f) => /\btx\.[a-z][A-Za-z]*\.(find|create|update|delete|upsert|count|groupBy)/.test(f.content))
+      .map((f) => path.relative(srcDir, f.file));
+
+    expect(offenders).toEqual([]);
+  });
+});
+
+/** H6.2 — لا ملف God-file: كل ملف مسارات مسؤولية واحدة بحجم معقول */
+describe('Architecture: no god-file in the routes layer (H6.2)', () => {
+  // هدف الخطة «~150 سطرًا»؛ الهامش يسمح بالتعليقات والاستيرادات بلا تساهل حقيقي
+  const MAX_ROUTE_LINES = 175;
+
+  it(`every route file stays under ${MAX_ROUTE_LINES} lines`, async () => {
+    const files = await readAll(path.join(srcDir, 'routes'));
+    expect(files.length).toBeGreaterThan(0);
+
+    const tooBig = files
+      .map((f) => ({ file: path.relative(srcDir, f.file), lines: f.content.split('\n').length }))
+      .filter((f) => f.lines > MAX_ROUTE_LINES);
+
+    expect(tooBig).toEqual([]);
+  });
 });
