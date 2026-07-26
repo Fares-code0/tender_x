@@ -2,10 +2,10 @@ import { Router } from 'express';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { TENDER_STATUSES } from '@tender/shared';
-import { prisma } from '../lib/prisma';
 import { validate } from '../lib/errors';
 import { requireAuth, requireRole } from '../middleware/auth';
-import { countsByStatus } from '../services/stats';
+import { countsByStatus, tendersCreatedByUser, statusChangesByUser } from '../services/stats';
+import * as userRepo from '../repositories/userRepository';
 
 export const reportsRouter = Router();
 reportsRouter.use(requireAuth, requireRole('MANAGER', 'OWNER', 'ADMIN'));
@@ -41,27 +41,13 @@ reportsRouter.get('/summary', async (req, res, next) => {
     const wonLost = { won: byStatus.WON, lost: byStatus.LOST };
 
     // الأداء لكل مستخدم في الفترة: المُنشأ + تغييرات الحالة المنفَّذة
-    const users = await prisma.user.findMany({
-      where: f.userId ? { id: f.userId } : {},
-      select: { id: true, name: true, role: true },
-      orderBy: { createdAt: 'asc' },
-    });
+    const users = await userRepo.listForReport(f.userId);
 
     // H4.2 — استعلامان مجمّعان بدل استعلامين لكل مستخدم (O(1) بدل O(2N))
-    const [createdRows, changeRows] = await Promise.all([
-      prisma.tender.groupBy({
-        by: ['createdById'],
-        where: tenderWhere,
-        _count: { _all: true },
-      }),
-      prisma.tenderStatusHistory.groupBy({
-        by: ['changedById'],
-        where: { ...dateWhere, ...(f.userId ? { changedById: f.userId } : {}) },
-        _count: { _all: true },
-      }),
+    const [createdByUser, changesByUser] = await Promise.all([
+      tendersCreatedByUser(tenderWhere),
+      statusChangesByUser({ ...dateWhere, ...(f.userId ? { changedById: f.userId } : {}) }),
     ]);
-    const createdByUser = new Map(createdRows.map((r) => [r.createdById, r._count._all]));
-    const changesByUser = new Map(changeRows.map((r) => [r.changedById, r._count._all]));
 
     const byUser = users.map((u) => ({
       userId: u.id,

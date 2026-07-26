@@ -12,7 +12,7 @@ import {
   isAllowedAttachment,
   fileExtension,
 } from '@tender/shared';
-import { prisma } from '../lib/prisma';
+import * as attachmentRepo from '../repositories/attachmentRepository';
 import { AppError } from '../lib/errors';
 import { storage } from '../services/storage';
 import { requireAuth } from '../middleware/auth';
@@ -67,10 +67,7 @@ const DOWNLOAD_SUPERVISORY_ROLES: Role[] = ['QA', 'MANAGER', 'OWNER', 'ADMIN'];
 
 attachmentsRouter.get('/:id/download', async (req, res, next) => {
   try {
-    const attachment = await prisma.attachment.findUnique({
-      where: { id: req.params.id },
-      include: { tender: { select: { createdById: true, currentAssigneeId: true } } },
-    });
+    const attachment = await attachmentRepo.findByIdWithTender(req.params.id);
     if (!attachment) throw new AppError(404, 'NOT_FOUND', 'المرفق غير موجود');
 
     // H1.1 — يُسمح بالتنزيل للأدوار الإشرافية، أو منشئ المناقصة، أو مسؤولها الحالي،

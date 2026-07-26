@@ -155,16 +155,18 @@
 
 ## H6 — إعادة الهيكلة (Clean Architecture / DDD) 🟠/🟡
 
-- [ ] **H6.1** — طبقة Repository (إخراج Prisma من الـroutes). (Finding #13)
+- [x] **H6.1** — طبقة Repository (إخراج Prisma من الـroutes). (Finding #13)
   - ✅ Verify: لا استدعاء Prisma مباشر داخل معالجات الـroutes.
+  - Verified: أُنشئت `src/repositories/` (مناقصات، مستخدمون، مرفقات، قوائم مراجعة، إشعارات، تدقيق، إعدادات، توكنات، معاملات). نُقل **77 استدعاء Prisma** من كل ملفات المسارات؛ `grep -rn "prisma\." src/routes/` يعيد **لا شيء**. المعاملات تمرّ عبر `runInTransaction` فتبقى ذرّية (تغيير الحالة + قيد التدقيق معًا) بلا كشف العميل. أُضيف **اختبار معماري** (`tests/architecture.test.ts`) يفشل إن عاد أي استدعاء Prisma إلى المسارات، مع حارس ضد النجاح الفارغ. 191 اختبارًا أخضر بلا تغيير سلوك.
 - [ ] **H6.2** — فصل Controller → Service وتفكيك `tenders.ts` (709 سطرًا).
   - ✅ Verify: كل ملف route < ~150 سطرًا ومسؤولية واحدة.
 - [ ] **H6.3** — نسخنة الـAPI (`/v1`). (Finding #20)
   - ✅ Verify: كل المسارات تحت `/v1`.
 - [ ] **H6.4** — توليد OpenAPI/Swagger من Zod. (Finding #20)
   - ✅ Verify: `/docs` يعرض المخطط الحيّ.
-- [ ] **H6.5** — DRY: `loadTenderOr404` + شظايا `select` مشتركة.
+- [x] **H6.5** — DRY: `loadTenderOr404` + شظايا `select` مشتركة.
   - ✅ Verify: إزالة تكرار فحص وجود المناقصة/رسائل 404.
+  - Verified: نمط «اجلب المناقصة وإلا 404» كان مكرّرًا **11 مرة** بنصّ رسالة متطابق ⇒ صار `tenderRepo.findByIdOrThrow()` (مع `ensureExists`/`findDetailByIdOrThrow` للحالتين الأخريين). وشظايا الـ`select` المكرّرة (`assigneeSelect`/`attachmentUploaderSelect`) صارت في `repositories/selects.ts` مرة واحدة. حجم `tenders.ts` نزل من 720 إلى 656 سطرًا رغم أن المنطق كما هو.
 
 **🔒 بوابة H6:** فصل مسؤوليات واضح، لا God-file، API منسخَن وموثّق.
 

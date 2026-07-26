@@ -3,7 +3,8 @@ import { Router } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { loginSchema } from '@tender/shared';
-import { prisma } from '../lib/prisma';
+import * as userRepo from '../repositories/userRepository';
+import * as tokenRepo from '../repositories/tokenRepository';
 import { AppError, validate } from '../lib/errors';
 import { env } from '../lib/env';
 import { requireAuth } from '../middleware/auth';
@@ -24,7 +25,7 @@ const cookieOptions = {
 authRouter.post('/login', async (req, res, next) => {
   try {
     const { email, password } = validate(loginSchema, req.body);
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await userRepo.findByEmail(email);
     if (!user) throw new AppError(401, 'INVALID_CREDENTIALS', 'بيانات الدخول غير صحيحة');
     if (!user.isActive) throw new AppError(403, 'ACCOUNT_DISABLED', 'هذا الحساب معطّل');
 
@@ -42,14 +43,11 @@ authRouter.post('/login', async (req, res, next) => {
       // H2.3 — عدّاد المحاولات الفاشلة؛ عند بلوغ الحد يُقفل الحساب لمدة محددة
       const attempts = user.failedLoginAttempts + 1;
       const reachedLimit = attempts >= env.loginMaxFailedAttempts;
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          failedLoginAttempts: reachedLimit ? 0 : attempts,
-          lockedUntil: reachedLimit
-            ? new Date(Date.now() + env.loginLockMinutes * 60 * 1000)
-            : user.lockedUntil,
-        },
+      await userRepo.updateLoginState(user.id, {
+        failedLoginAttempts: reachedLimit ? 0 : attempts,
+        lockedUntil: reachedLimit
+          ? new Date(Date.now() + env.loginLockMinutes * 60 * 1000)
+          : user.lockedUntil,
       });
       if (reachedLimit) {
         throw new AppError(
@@ -63,10 +61,7 @@ authRouter.post('/login', async (req, res, next) => {
 
     // H2.3 — نجاح الدخول يصفّر العدّاد ويرفع القفل
     if (user.failedLoginAttempts > 0 || user.lockedUntil) {
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { failedLoginAttempts: 0, lockedUntil: null },
-      });
+      await userRepo.updateLoginState(user.id, { failedLoginAttempts: 0, lockedUntil: null });
     }
 
     // H1.3 — jti فريد لكل توكن حتى يمكن إبطاله لاحقًا عبر denylist
@@ -97,18 +92,10 @@ authRouter.post('/logout', async (req, res, next) => {
           exp?: number;
         };
         if (payload.jti && payload.exp) {
-          await prisma.revokedToken.upsert({
-            where: { jti: payload.jti },
-            create: {
-              jti: payload.jti,
-              userId: payload.sub ?? '',
-              expiresAt: new Date(payload.exp * 1000),
-            },
-            update: {},
-          });
+          await tokenRepo.revoke(payload.jti, payload.sub ?? '', new Date(payload.exp * 1000));
         }
         // تنظيف كسول: إزالة التوكنات المنتهية من القائمة حتى لا تنمو بلا حد
-        await prisma.revokedToken.deleteMany({ where: { expiresAt: { lt: new Date() } } });
+        await tokenRepo.purgeExpired();
       } catch {
         // توكن غير صالح/منتهٍ — لا شيء لإبطاله
       }

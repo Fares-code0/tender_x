@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { updateSettingsSchema } from '@tender/shared';
-import { prisma } from '../lib/prisma';
 import { validate } from '../lib/errors';
+import * as settingRepo from '../repositories/settingRepository';
 import { logAudit } from '../lib/audit';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { getReminderDays, REMINDER_SETTING_KEY } from '../services/closingReminder';
@@ -23,11 +23,7 @@ settingsRouter.get('/', async (_req, res, next) => {
 settingsRouter.patch('/', async (req, res, next) => {
   try {
     const input = validate(updateSettingsSchema, req.body);
-    await prisma.systemSetting.upsert({
-      where: { key: REMINDER_SETTING_KEY },
-      update: { value: String(input.closingReminderDays) },
-      create: { key: REMINDER_SETTING_KEY, value: String(input.closingReminderDays) },
-    });
+    await settingRepo.upsert(REMINDER_SETTING_KEY, String(input.closingReminderDays));
     await logAudit({
       userId: req.user!.id,
       action: 'SETTINGS_UPDATED',

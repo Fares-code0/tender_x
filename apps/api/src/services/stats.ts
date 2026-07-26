@@ -64,6 +64,33 @@ export async function countsByStatus(f: StatsFilters = {}): Promise<StatusCounts
   return byStatus;
 }
 
+/**
+ * H4.2 — عدد المناقصات المُنشأة لكل مستخدم في استعلام مجمّع واحد
+ * (بدل استعلام لكل مستخدم).
+ */
+export async function tendersCreatedByUser(
+  where: Prisma.TenderWhereInput,
+): Promise<Map<string, number>> {
+  const rows = await prisma.tender.groupBy({
+    by: ['createdById'],
+    where,
+    _count: { _all: true },
+  });
+  return new Map(rows.map((r) => [r.createdById, r._count._all]));
+}
+
+/** H4.2 — عدد تغييرات الحالة المنفَّذة لكل مستخدم في استعلام مجمّع واحد. */
+export async function statusChangesByUser(
+  where: Prisma.TenderStatusHistoryWhereInput,
+): Promise<Map<string, number>> {
+  const rows = await prisma.tenderStatusHistory.groupBy({
+    by: ['changedById'],
+    where,
+    _count: { _all: true },
+  });
+  return new Map(rows.map((r) => [r.changedById, r._count._all]));
+}
+
 /** H4.1 — التوزيع الشهري عبر `date_trunc` في القاعدة. */
 async function monthlyCounts(f: StatsFilters): Promise<{ month: string; count: number }[]> {
   const rows = await prisma.$queryRaw<{ month: string; count: bigint }[]>`

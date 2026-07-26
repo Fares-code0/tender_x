@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import type { TenderStatus } from '@prisma/client';
-import { prisma } from '../lib/prisma';
+import * as tenderRepo from '../repositories/tenderRepository';
 import { requireAuth } from '../middleware/auth';
 import { computeAggregateStats } from '../services/stats';
 import { getReminderDays } from '../services/closingReminder';
@@ -22,35 +22,34 @@ dashboardRouter.get('/', async (req, res, next) => {
       const days = await getReminderDays();
       const soon = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
       const [newCount, underReviewMineCount, closingSoonCount] = await Promise.all([
-        prisma.tender.count({ where: { status: 'NEW' } }),
-        prisma.tender.count({ where: { status: 'UNDER_REVIEW', currentAssigneeId: me.id } }),
-        prisma.tender.count({
-          where: { status: { in: ACTIVE }, closingDate: { gte: new Date(), lte: soon } },
+        tenderRepo.count({ status: 'NEW' }),
+        tenderRepo.count({ status: 'UNDER_REVIEW', currentAssigneeId: me.id }),
+        tenderRepo.count({
+          status: { in: ACTIVE },
+          closingDate: { gte: new Date(), lte: soon },
         }),
       ]);
       body.qa = { newCount, underReviewMineCount, closingSoonCount };
     }
 
     if (me.role === 'WRITER') {
-      const myTasks = await prisma.tender.findMany({
-        where: { currentAssigneeId: me.id, status: 'PROPOSAL_PREPARATION' },
-        select: { id: true },
+      const myTasks = await tenderRepo.listIds({
+        currentAssigneeId: me.id,
+        status: 'PROPOSAL_PREPARATION',
       });
-      const returnedToMeCount = await prisma.tenderStatusHistory.count({
-        where: {
-          toStatus: 'PROPOSAL_PREPARATION',
-          note: { not: null },
-          tender: { currentAssigneeId: me.id, status: 'PROPOSAL_PREPARATION' },
-          fromStatus: 'PENDING_APPROVAL',
-        },
+      const returnedToMeCount = await tenderRepo.countStatusHistory({
+        toStatus: 'PROPOSAL_PREPARATION',
+        note: { not: null },
+        tender: { currentAssigneeId: me.id, status: 'PROPOSAL_PREPARATION' },
+        fromStatus: 'PENDING_APPROVAL',
       });
       body.writer = { myTasksCount: myTasks.length, returnedToMeCount };
     }
 
     if (me.role === 'MANAGER') {
       const [pendingApprovalCount, submittedCount] = await Promise.all([
-        prisma.tender.count({ where: { status: 'PENDING_APPROVAL' } }),
-        prisma.tender.count({ where: { status: 'SUBMITTED' } }),
+        tenderRepo.count({ status: 'PENDING_APPROVAL' }),
+        tenderRepo.count({ status: 'SUBMITTED' }),
       ]);
       body.manager = { pendingApprovalCount, submittedCount };
     }
