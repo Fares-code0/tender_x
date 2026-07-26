@@ -13,7 +13,7 @@ describe('Auth API (M1.3)', () => {
   it('logs in with correct credentials: 200 + httpOnly cookie + user', async () => {
     const user = await createUser('QA');
     const res = await request(app)
-      .post('/auth/login')
+      .post('/v1/auth/login')
       .send({ email: user.email, password: TEST_PASSWORD });
     expect(res.status).toBe(200);
     expect(res.body.user).toMatchObject({ email: user.email, role: 'QA' });
@@ -26,7 +26,7 @@ describe('Auth API (M1.3)', () => {
   it('rejects wrong password with 401', async () => {
     const user = await createUser('QA');
     const res = await request(app)
-      .post('/auth/login')
+      .post('/v1/auth/login')
       .send({ email: user.email, password: 'wrong-password' });
     expect(res.status).toBe(401);
     expect(res.body.error.code).toBe('INVALID_CREDENTIALS');
@@ -34,26 +34,26 @@ describe('Auth API (M1.3)', () => {
 
   it('rejects unknown email with 401', async () => {
     const res = await request(app)
-      .post('/auth/login')
+      .post('/v1/auth/login')
       .send({ email: 'nobody@test.com', password: TEST_PASSWORD });
     expect(res.status).toBe(401);
   });
 
   it('GET /auth/me without cookie returns 401', async () => {
-    const res = await request(app).get('/auth/me');
+    const res = await request(app).get('/v1/auth/me');
     expect(res.status).toBe(401);
   });
 
   it('GET /auth/me with cookie returns the user', async () => {
     const user = await createUser('MANAGER');
     const cookie = await loginAs(app, user.email);
-    const res = await request(app).get('/auth/me').set('Cookie', cookie);
+    const res = await request(app).get('/v1/auth/me').set('Cookie', cookie);
     expect(res.status).toBe(200);
     expect(res.body.user).toMatchObject({ id: user.id, role: 'MANAGER' });
   });
 
   it('logout clears the cookie', async () => {
-    const res = await request(app).post('/auth/logout');
+    const res = await request(app).post('/v1/auth/logout');
     expect(res.status).toBe(200);
     expect(String(res.headers['set-cookie'])).toMatch(/token=;/);
   });
@@ -62,7 +62,7 @@ describe('Auth API (M1.3)', () => {
   it('login cookie is SameSite=Strict', async () => {
     const user = await createUser('QA');
     const res = await request(app)
-      .post('/auth/login')
+      .post('/v1/auth/login')
       .send({ email: user.email, password: TEST_PASSWORD });
     expect(String(res.headers['set-cookie']).toLowerCase()).toContain('samesite=strict');
   });
@@ -72,13 +72,13 @@ describe('Auth API (M1.3)', () => {
     const user = await createUser('QA');
     const cookie = await loginAs(app, user.email);
 
-    const before = await request(app).get('/auth/me').set('Cookie', cookie);
+    const before = await request(app).get('/v1/auth/me').set('Cookie', cookie);
     expect(before.status).toBe(200);
 
-    const out = await request(app).post('/auth/logout').set('Cookie', cookie);
+    const out = await request(app).post('/v1/auth/logout').set('Cookie', cookie);
     expect(out.status).toBe(200);
 
-    const after = await request(app).get('/auth/me').set('Cookie', cookie);
+    const after = await request(app).get('/v1/auth/me').set('Cookie', cookie);
     expect(after.status).toBe(401);
   });
 });

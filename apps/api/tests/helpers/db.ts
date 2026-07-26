@@ -35,7 +35,7 @@ export async function createUser(role: Role, overrides: { isActive?: boolean; em
 
 /** يسجل الدخول ويرجع كوكي الجلسة لتمريرها في الطلبات التالية */
 export async function loginAs(app: Express, email: string, password: string = TEST_PASSWORD) {
-  const res = await request(app).post('/auth/login').send({ email, password });
+  const res = await request(app).post('/v1/auth/login').send({ email, password });
   if (res.status !== 200) {
     throw new Error(`login failed for ${email}: ${res.status} ${JSON.stringify(res.body)}`);
   }

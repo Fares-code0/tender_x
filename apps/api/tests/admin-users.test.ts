@@ -14,7 +14,7 @@ describe('Admin users API (M1.5)', () => {
   it('admin creates a user successfully (201) + audit log row', async () => {
     const admin = await createUser('ADMIN');
     const cookie = await loginAs(app, admin.email);
-    const res = await request(app).post('/admin/users').set('Cookie', cookie).send({
+    const res = await request(app).post('/v1/admin/users').set('Cookie', cookie).send({
       name: 'كاتب جديد',
       email: 'new-writer@test.com',
       password: 'StrongPass1',
@@ -31,7 +31,7 @@ describe('Admin users API (M1.5)', () => {
   it('non-admin (QA) gets 403', async () => {
     const qa = await createUser('QA');
     const cookie = await loginAs(app, qa.email);
-    const res = await request(app).post('/admin/users').set('Cookie', cookie).send({
+    const res = await request(app).post('/v1/admin/users').set('Cookie', cookie).send({
       name: 'اختبار',
       email: 'x@test.com',
       password: 'StrongPass1',
@@ -44,7 +44,7 @@ describe('Admin users API (M1.5)', () => {
     const admin = await createUser('ADMIN');
     const existing = await createUser('WRITER');
     const cookie = await loginAs(app, admin.email);
-    const res = await request(app).post('/admin/users').set('Cookie', cookie).send({
+    const res = await request(app).post('/v1/admin/users').set('Cookie', cookie).send({
       name: 'مكرر',
       email: existing.email,
       password: 'StrongPass1',
@@ -59,14 +59,14 @@ describe('Admin users API (M1.5)', () => {
     const cookie = await loginAs(app, admin.email);
 
     const patch = await request(app)
-      .patch(`/admin/users/${target.id}`)
+      .patch(`/v1/admin/users/${target.id}`)
       .set('Cookie', cookie)
       .send({ isActive: false });
     expect(patch.status).toBe(200);
     expect(patch.body.user.isActive).toBe(false);
 
     const login = await request(app)
-      .post('/auth/login')
+      .post('/v1/auth/login')
       .send({ email: target.email, password: TEST_PASSWORD });
     expect(login.status).toBe(403);
     expect(login.body.error.code).toBe('ACCOUNT_DISABLED');
@@ -76,7 +76,7 @@ describe('Admin users API (M1.5)', () => {
   it('rejects a weak password with 422', async () => {
     const admin = await createUser('ADMIN');
     const cookie = await loginAs(app, admin.email);
-    const res = await request(app).post('/admin/users').set('Cookie', cookie).send({
+    const res = await request(app).post('/v1/admin/users').set('Cookie', cookie).send({
       name: 'كلمة ضعيفة',
       email: 'weakpass@test.com',
       password: 'weak',
@@ -90,7 +90,7 @@ describe('Admin users API (M1.5)', () => {
     const target = await createUser('WRITER');
     const cookie = await loginAs(app, admin.email);
     const res = await request(app)
-      .patch(`/admin/users/${target.id}`)
+      .patch(`/v1/admin/users/${target.id}`)
       .set('Cookie', cookie)
       .send({ role: 'QA' });
     expect(res.status).toBe(200);

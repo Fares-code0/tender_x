@@ -19,7 +19,7 @@ async function tenderWithWriter(app: Express) {
   const writer = await createUser('WRITER');
   const qaCookie = await loginAs(app, qa.email);
   const writerCookie = await loginAs(app, writer.email);
-  const created = await request(app).post('/tenders').set('Cookie', qaCookie).send(validTender);
+  const created = await request(app).post('/v1/tenders').set('Cookie', qaCookie).send(validTender);
   return { id: created.body.tender.id as string, writer, writerCookie, qaCookie };
 }
 
@@ -29,7 +29,7 @@ describe('POST /tenders/:id/attachments (M5.1)', () => {
   it('WRITER uploads a pdf: 201 + row + audit', async () => {
     const { id, writer, writerCookie } = await tenderWithWriter(app);
     const res = await request(app)
-      .post(`/tenders/${id}/attachments`)
+      .post(`/v1/tenders/${id}/attachments`)
       .set('Cookie', writerCookie)
       .attach('file', Buffer.from('%PDF-1.4 fake'), {
         filename: 'proposal.pdf',
@@ -48,7 +48,7 @@ describe('POST /tenders/:id/attachments (M5.1)', () => {
   it('preserves an Arabic filename (UTF-8, not garbled)', async () => {
     const { id, writerCookie } = await tenderWithWriter(app);
     const res = await request(app)
-      .post(`/tenders/${id}/attachments`)
+      .post(`/v1/tenders/${id}/attachments`)
       .set('Cookie', writerCookie)
       .attach('file', Buffer.from('%PDF arabic name'), {
         filename: 'العرض-الفني.pdf',
@@ -61,7 +61,7 @@ describe('POST /tenders/:id/attachments (M5.1)', () => {
   it('rejects a .exe file: 422', async () => {
     const { id, writerCookie } = await tenderWithWriter(app);
     const res = await request(app)
-      .post(`/tenders/${id}/attachments`)
+      .post(`/v1/tenders/${id}/attachments`)
       .set('Cookie', writerCookie)
       .attach('file', Buffer.from('MZ...'), {
         filename: 'malware.exe',
@@ -75,7 +75,7 @@ describe('POST /tenders/:id/attachments (M5.1)', () => {
     const { id, writerCookie } = await tenderWithWriter(app);
     const big = Buffer.alloc(21 * 1024 * 1024, 0x41); // 21MB
     const res = await request(app)
-      .post(`/tenders/${id}/attachments`)
+      .post(`/v1/tenders/${id}/attachments`)
       .set('Cookie', writerCookie)
       .attach('file', big, { filename: 'huge.pdf', contentType: 'application/pdf' });
     expect(res.status).toBe(413);
@@ -85,7 +85,7 @@ describe('POST /tenders/:id/attachments (M5.1)', () => {
   it('non-writer (QA) cannot upload: 403', async () => {
     const { id, qaCookie } = await tenderWithWriter(app);
     const res = await request(app)
-      .post(`/tenders/${id}/attachments`)
+      .post(`/v1/tenders/${id}/attachments`)
       .set('Cookie', qaCookie)
       .attach('file', Buffer.from('%PDF'), { filename: 'x.pdf', contentType: 'application/pdf' });
     expect(res.status).toBe(403);
@@ -98,7 +98,7 @@ describe('GET list + download (M5.2)', () => {
   async function uploadOne(app: Express) {
     const ctx = await tenderWithWriter(app);
     const up = await request(app)
-      .post(`/tenders/${ctx.id}/attachments`)
+      .post(`/v1/tenders/${ctx.id}/attachments`)
       .set('Cookie', ctx.writerCookie)
       .attach('file', Buffer.from('hello pdf content'), {
         filename: 'file.pdf',
@@ -109,7 +109,7 @@ describe('GET list + download (M5.2)', () => {
 
   it('lists attachments with uploader, size and date', async () => {
     const { id, writerCookie } = await uploadOne(app);
-    const res = await request(app).get(`/tenders/${id}/attachments`).set('Cookie', writerCookie);
+    const res = await request(app).get(`/v1/tenders/${id}/attachments`).set('Cookie', writerCookie);
     expect(res.status).toBe(200);
     expect(res.body.attachments).toHaveLength(1);
     expect(res.body.attachments[0]).toMatchObject({ fileName: 'file.pdf' });
@@ -119,14 +119,14 @@ describe('GET list + download (M5.2)', () => {
 
   it('download without auth: 401', async () => {
     const { attachmentId } = await uploadOne(app);
-    const res = await request(app).get(`/attachments/${attachmentId}/download`);
+    const res = await request(app).get(`/v1/attachments/${attachmentId}/download`);
     expect(res.status).toBe(401);
   });
 
   it('download with auth returns the file content', async () => {
     const { attachmentId, writerCookie } = await uploadOne(app);
     const res = await request(app)
-      .get(`/attachments/${attachmentId}/download`)
+      .get(`/v1/attachments/${attachmentId}/download`)
       .set('Cookie', writerCookie);
     expect(res.status).toBe(200);
     expect(res.headers['content-disposition']).toContain('file.pdf');
@@ -139,7 +139,7 @@ describe('GET list + download (M5.2)', () => {
     const outsider = await createUser('WRITER');
     const cookie = await loginAs(app, outsider.email);
     const res = await request(app)
-      .get(`/attachments/${attachmentId}/download`)
+      .get(`/v1/attachments/${attachmentId}/download`)
       .set('Cookie', cookie);
     expect(res.status).toBe(403);
   });
@@ -149,7 +149,7 @@ describe('GET list + download (M5.2)', () => {
     const manager = await createUser('MANAGER');
     const cookie = await loginAs(app, manager.email);
     const res = await request(app)
-      .get(`/attachments/${attachmentId}/download`)
+      .get(`/v1/attachments/${attachmentId}/download`)
       .set('Cookie', cookie);
     expect(res.status).toBe(200);
   });
@@ -162,7 +162,7 @@ describe('Versioning (M5.3)', () => {
     const { id, writerCookie } = await tenderWithWriter(app);
     const attach = (body: string) =>
       request(app)
-        .post(`/tenders/${id}/attachments`)
+        .post(`/v1/tenders/${id}/attachments`)
         .set('Cookie', writerCookie)
         .attach('file', Buffer.from(body), {
           filename: 'report.docx',

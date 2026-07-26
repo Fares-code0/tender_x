@@ -1,4 +1,4 @@
-import { ApiError, api } from './client';
+import { ApiError, API_BASE, api } from './client';
 
 export interface Attachment {
   id: string;
@@ -21,7 +21,7 @@ export async function uploadAttachment(
 ): Promise<{ attachment: Attachment }> {
   const form = new FormData();
   form.append('file', file);
-  const res = await fetch(`/api/tenders/${tenderId}/attachments`, {
+  const res = await fetch(`${API_BASE}/tenders/${tenderId}/attachments`, {
     method: 'POST',
     credentials: 'include',
     body: form,
@@ -43,5 +43,5 @@ export async function uploadAttachment(
 
 /** رابط التحميل (يحمل الكوكي تلقائيًا لكونه same-origin) */
 export function attachmentDownloadUrl(attachmentId: string): string {
-  return `/api/attachments/${attachmentId}/download`;
+  return `${API_BASE}/attachments/${attachmentId}/download`;
 }

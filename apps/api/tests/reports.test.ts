@@ -37,7 +37,7 @@ describe('GET /reports/summary (M7.2)', () => {
     await makeTenderAt('2026-09-01T00:00:00.000Z', 'WON', qa.id);
 
     const res = await request(app)
-      .get('/reports/summary?from=2026-06-01T00:00:00.000Z&to=2026-06-30T23:59:59.000Z')
+      .get('/v1/reports/summary?from=2026-06-01T00:00:00.000Z&to=2026-06-30T23:59:59.000Z')
       .set('Cookie', cookie);
     expect(res.status).toBe(200);
     expect(res.body.total).toBe(3);
@@ -59,7 +59,7 @@ describe('GET /reports/summary (M7.2)', () => {
     await makeTenderAt('2026-06-05T00:00:00.000Z', 'NEW', qa1.id);
     await makeTenderAt('2026-06-06T00:00:00.000Z', 'NEW', qa2.id);
 
-    const res = await request(app).get(`/reports/summary?userId=${qa1.id}`).set('Cookie', cookie);
+    const res = await request(app).get(`/v1/reports/summary?userId=${qa1.id}`).set('Cookie', cookie);
     expect(res.body.total).toBe(1);
     expect(res.body.byUser).toHaveLength(1);
     expect(res.body.byUser[0].userId).toBe(qa1.id);
@@ -68,7 +68,7 @@ describe('GET /reports/summary (M7.2)', () => {
   it('rejects non-manager/owner: 403', async () => {
     const qa = await createUser('QA');
     const cookie = await loginAs(app, qa.email);
-    const res = await request(app).get('/reports/summary').set('Cookie', cookie);
+    const res = await request(app).get('/v1/reports/summary').set('Cookie', cookie);
     expect(res.status).toBe(403);
   });
 });

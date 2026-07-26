@@ -17,7 +17,7 @@ describe('Audit log endpoint (M8.1)', () => {
   async function tenderWithAudit() {
     const qa = await createUser('QA');
     const cookie = await loginAs(app, qa.email);
-    const created = await request(app).post('/tenders').set('Cookie', cookie).send(validTender);
+    const created = await request(app).post('/v1/tenders').set('Cookie', cookie).send(validTender);
     return { id: created.body.tender.id as string };
   }
 
@@ -25,7 +25,7 @@ describe('Audit log endpoint (M8.1)', () => {
     const { id } = await tenderWithAudit();
     const manager = await createUser('MANAGER');
     const cookie = await loginAs(app, manager.email);
-    const res = await request(app).get(`/tenders/${id}/audit`).set('Cookie', cookie);
+    const res = await request(app).get(`/v1/tenders/${id}/audit`).set('Cookie', cookie);
     expect(res.status).toBe(200);
     expect(res.body.entries.length).toBeGreaterThanOrEqual(1);
     const entry = res.body.entries[0];
@@ -38,7 +38,7 @@ describe('Audit log endpoint (M8.1)', () => {
     const { id } = await tenderWithAudit();
     const qa2 = await createUser('QA');
     const cookie = await loginAs(app, qa2.email);
-    const res = await request(app).get(`/tenders/${id}/audit`).set('Cookie', cookie);
+    const res = await request(app).get(`/v1/tenders/${id}/audit`).set('Cookie', cookie);
     expect(res.status).toBe(403);
   });
 
@@ -46,8 +46,8 @@ describe('Audit log endpoint (M8.1)', () => {
     const { id } = await tenderWithAudit();
     const manager = await createUser('MANAGER');
     const cookie = await loginAs(app, manager.email);
-    const del = await request(app).delete(`/tenders/${id}/audit`).set('Cookie', cookie);
-    const patch = await request(app).patch(`/tenders/${id}/audit`).set('Cookie', cookie);
+    const del = await request(app).delete(`/v1/tenders/${id}/audit`).set('Cookie', cookie);
+    const patch = await request(app).patch(`/v1/tenders/${id}/audit`).set('Cookie', cookie);
     expect(del.status).toBe(404); // لا مسار حذف
     expect(patch.status).toBe(404); // لا مسار تعديل
   });
@@ -61,7 +61,7 @@ describe('Login rate limiting (M8.2)', () => {
     let last = 0;
     for (let i = 0; i < 6; i++) {
       const res = await request(rlApp)
-        .post('/auth/login')
+        .post('/v1/auth/login')
         .send({ email: 'nobody@test.com', password: 'wrong-pass-123' });
       last = res.status;
     }

@@ -13,15 +13,15 @@ describe('Tenders list sort (SCR-03 filter gap)', () => {
     const cookie = await loginAs(app, qa.email);
     const make = (title: string, closingDate: string, url: string) =>
       request(app)
-        .post('/tenders')
+        .post('/v1/tenders')
         .set('Cookie', cookie)
         .send({ title, entity: 'جهة', closingDate, url });
     await make('أ', '2026-08-01T00:00:00.000Z', 'u1');
     await make('ب', '2026-10-01T00:00:00.000Z', 'u2');
     await make('ج', '2026-09-01T00:00:00.000Z', 'u3');
 
-    const asc = await request(app).get('/tenders?sort=closing_asc').set('Cookie', cookie);
-    const desc = await request(app).get('/tenders?sort=closing_desc').set('Cookie', cookie);
+    const asc = await request(app).get('/v1/tenders?sort=closing_asc').set('Cookie', cookie);
+    const desc = await request(app).get('/v1/tenders?sort=closing_desc').set('Cookie', cookie);
 
     const ascDates = asc.body.tenders.map((t: { closingDate: string }) => t.closingDate);
     const descDates = desc.body.tenders.map((t: { closingDate: string }) => t.closingDate);
@@ -37,7 +37,7 @@ describe('GET /users (assignee-filter dropdown source)', () => {
     const qa = await createUser('QA');
     await createUser('WRITER');
     const cookie = await loginAs(app, qa.email);
-    const res = await request(app).get('/users').set('Cookie', cookie);
+    const res = await request(app).get('/v1/users').set('Cookie', cookie);
     expect(res.status).toBe(200);
     expect(res.body.users.length).toBeGreaterThanOrEqual(2);
     expect(res.body.users[0]).toHaveProperty('name');
@@ -46,7 +46,7 @@ describe('GET /users (assignee-filter dropdown source)', () => {
   });
 
   it('requires auth: 401', async () => {
-    const res = await request(app).get('/users');
+    const res = await request(app).get('/v1/users');
     expect(res.status).toBe(401);
   });
 });

@@ -35,7 +35,7 @@ describe('GET /dashboard (M7.1)', () => {
     await makeTender({ status: 'UNDER_REVIEW', createdById: qa.id, currentAssigneeId: qa.id });
     await makeTender({ status: 'NEW', createdById: qa.id, closingInDays: 2 }); // قريب الإغلاق
 
-    const res = await request(app).get('/dashboard').set('Cookie', cookie);
+    const res = await request(app).get('/v1/dashboard').set('Cookie', cookie);
     expect(res.status).toBe(200);
     expect(res.body.role).toBe('QA');
     expect(res.body.qa).toMatchObject({ newCount: 2, underReviewMineCount: 1 });
@@ -54,7 +54,7 @@ describe('GET /dashboard (M7.1)', () => {
       createdById: qa.id,
       currentAssigneeId: writer.id,
     });
-    const res = await request(app).get('/dashboard').set('Cookie', cookie);
+    const res = await request(app).get('/v1/dashboard').set('Cookie', cookie);
     expect(res.body.role).toBe('WRITER');
     expect(res.body.writer).toBeDefined();
     expect(res.body.writer.myTasksCount).toBe(1);
@@ -70,7 +70,7 @@ describe('GET /dashboard (M7.1)', () => {
     await makeTender({ status: 'WON', createdById: qa.id });
     await makeTender({ status: 'LOST', createdById: qa.id });
 
-    const res = await request(app).get('/dashboard').set('Cookie', cookie);
+    const res = await request(app).get('/v1/dashboard').set('Cookie', cookie);
     expect(res.body.role).toBe('MANAGER');
     expect(res.body.manager).toMatchObject({ pendingApprovalCount: 1, submittedCount: 1 });
     expect(res.body.winRate).toBe(0.5); // WON 1 / (WON 1 + LOST 1)
@@ -82,7 +82,7 @@ describe('GET /dashboard (M7.1)', () => {
     const owner = await createUser('OWNER');
     const cookie = await loginAs(app, owner.email);
     await makeTender({ status: 'WON', createdById: qa.id });
-    const res = await request(app).get('/dashboard').set('Cookie', cookie);
+    const res = await request(app).get('/v1/dashboard').set('Cookie', cookie);
     expect(res.body.role).toBe('OWNER');
     expect(res.body.qa).toBeUndefined();
     expect(res.body.manager).toBeUndefined();
@@ -91,7 +91,7 @@ describe('GET /dashboard (M7.1)', () => {
   });
 
   it('requires auth: 401', async () => {
-    const res = await request(app).get('/dashboard');
+    const res = await request(app).get('/v1/dashboard');
     expect(res.status).toBe(401);
   });
 });

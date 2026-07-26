@@ -73,19 +73,19 @@ describe('distributed rate limiting across two app instances (H2.1)', () => {
 
     // 3 محاولات على النسخة A
     for (let i = 0; i < 3; i++) {
-      await request(instanceA).post('/auth/login').send(CREDS);
+      await request(instanceA).post('/v1/auth/login').send(CREDS);
     }
     // محاولتان على النسخة B → المجموع 5 (الحد)
     for (let i = 0; i < 2; i++) {
-      await request(instanceB).post('/auth/login').send(CREDS);
+      await request(instanceB).post('/v1/auth/login').send(CREDS);
     }
 
     // الطلب السادس يُرفض على النسخة B رغم أن أول 3 محاولات كانت على A
-    const blocked = await request(instanceB).post('/auth/login').send(CREDS);
+    const blocked = await request(instanceB).post('/v1/auth/login').send(CREDS);
     expect(blocked.status).toBe(429);
 
     // ويُرفض كذلك على النسخة A — العدّاد واحد مشترك
-    const blockedOnA = await request(instanceA).post('/auth/login').send(CREDS);
+    const blockedOnA = await request(instanceA).post('/v1/auth/login').send(CREDS);
     expect(blockedOnA.status).toBe(429);
   });
 
@@ -95,12 +95,12 @@ describe('distributed rate limiting across two app instances (H2.1)', () => {
     const instanceB = createApp({ rateLimit: true, redis: null });
 
     for (let i = 0; i < 6; i++) {
-      await request(instanceA).post('/auth/login').send(CREDS);
+      await request(instanceA).post('/v1/auth/login').send(CREDS);
     }
     // النسخة A محظورة الآن
-    expect((await request(instanceA).post('/auth/login').send(CREDS)).status).toBe(429);
+    expect((await request(instanceA).post('/v1/auth/login').send(CREDS)).status).toBe(429);
     // بينما النسخة B لا تزال تقبل — العدّاد غير مشترك
-    expect((await request(instanceB).post('/auth/login').send(CREDS)).status).not.toBe(429);
+    expect((await request(instanceB).post('/v1/auth/login').send(CREDS)).status).not.toBe(429);
   });
 });
 
@@ -108,9 +108,9 @@ describe('Retry-After and global limit (H2.2)', () => {
   it('returns Retry-After on a 429 from the login limiter', async () => {
     const app = createApp({ rateLimit: true, redis: makeRedis() });
 
-    let res = await request(app).post('/auth/login').send(CREDS);
+    let res = await request(app).post('/v1/auth/login').send(CREDS);
     for (let i = 0; i < 6 && res.status !== 429; i++) {
-      res = await request(app).post('/auth/login').send(CREDS);
+      res = await request(app).post('/v1/auth/login').send(CREDS);
     }
 
     expect(res.status).toBe(429);
@@ -123,11 +123,11 @@ describe('Retry-After and global limit (H2.2)', () => {
     const app = createApp({ rateLimit: true, redis: makeRedis(), globalLimit: 3, globalWindowMs: 60_000 });
 
     // مسارات مختلفة تشترك في نفس العدّاد العام
-    await request(app).get('/tenders');
-    await request(app).get('/notifications');
-    await request(app).get('/users');
+    await request(app).get('/v1/tenders');
+    await request(app).get('/v1/notifications');
+    await request(app).get('/v1/users');
 
-    const blocked = await request(app).get('/tenders');
+    const blocked = await request(app).get('/v1/tenders');
     expect(blocked.status).toBe(429);
     expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0);
     expect(blocked.body.error.code).toBe('RATE_LIMITED');
@@ -137,8 +137,8 @@ describe('Retry-After and global limit (H2.2)', () => {
     const app = createApp({ rateLimit: true, redis: makeRedis(), globalLimit: 1, globalWindowMs: 60_000 });
 
     // استهلك الحد العام
-    await request(app).get('/tenders');
-    expect((await request(app).get('/tenders')).status).toBe(429);
+    await request(app).get('/v1/tenders');
+    expect((await request(app).get('/v1/tenders')).status).toBe(429);
 
     // الفحوص تبقى متاحة للـorchestrator رغم تجاوز الحد
     expect((await request(app).get('/livez')).status).toBe(200);

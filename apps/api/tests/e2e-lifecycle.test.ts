@@ -33,7 +33,7 @@ describe('E2E tender lifecycle: create → … → WON (M4.8)', () => {
 
     // 1) QA ينشئ المناقصة (NEW)
     const created = await request(app)
-      .post('/tenders')
+      .post('/v1/tenders')
       .set('Cookie', qaCookie)
       .send({ title: 'مناقصة دورة كاملة', entity: 'وزارة التخطيط', closingDate: '2026-12-31T00:00:00.000Z' });
     expect(created.status).toBe(201);
@@ -41,26 +41,26 @@ describe('E2E tender lifecycle: create → … → WON (M4.8)', () => {
     expect(created.body.tender.status).toBe('NEW');
 
     // 2) QA يبدأ المراجعة (UNDER_REVIEW)
-    const started = await request(app).post(`/tenders/${id}/review/start`).set('Cookie', qaCookie);
+    const started = await request(app).post(`/v1/tenders/${id}/review/start`).set('Cookie', qaCookie);
     expect(started.body.tender.status).toBe('UNDER_REVIEW');
 
     // 3) QA يعبّئ الـChecklist بالكامل
     const filled = await request(app)
-      .put(`/tenders/${id}/checklist`)
+      .put(`/v1/tenders/${id}/checklist`)
       .set('Cookie', qaCookie)
       .send({ answers: template.items.map((it) => ({ itemId: it.id, checked: true })) });
     expect(filled.status).toBe(200);
 
     // 4) QA يعتمد المراجعة (اكتمال الـChecklist)
     const approvedReview = await request(app)
-      .post(`/tenders/${id}/review/decision`)
+      .post(`/v1/tenders/${id}/review/decision`)
       .set('Cookie', qaCookie)
       .send({ decision: 'approve' });
     expect(approvedReview.body.approved).toBe(true);
 
     // 5) QA يعيّن الكاتب (PROPOSAL_PREPARATION)
     const assigned = await request(app)
-      .post(`/tenders/${id}/assign`)
+      .post(`/v1/tenders/${id}/assign`)
       .set('Cookie', qaCookie)
       .send({ assigneeId: writer.id });
     expect(assigned.body.tender.status).toBe('PROPOSAL_PREPARATION');
@@ -68,26 +68,26 @@ describe('E2E tender lifecycle: create → … → WON (M4.8)', () => {
 
     // 6) الكاتب يرسل للاعتماد (PENDING_APPROVAL)
     const submitted = await request(app)
-      .post(`/tenders/${id}/submit-for-approval`)
+      .post(`/v1/tenders/${id}/submit-for-approval`)
       .set('Cookie', writerCookie);
     expect(submitted.body.tender.status).toBe('PENDING_APPROVAL');
 
     // 7) المدير يعتمد (managerApprovedAt)
     const managerApprove = await request(app)
-      .post(`/tenders/${id}/manager-decision`)
+      .post(`/v1/tenders/${id}/manager-decision`)
       .set('Cookie', managerCookie)
       .send({ decision: 'approve' });
     expect(managerApprove.body.tender.managerApprovedAt).not.toBeNull();
 
     // 8) المدير يسجّل التقديم (SUBMITTED)
     const markSubmitted = await request(app)
-      .post(`/tenders/${id}/mark-submitted`)
+      .post(`/v1/tenders/${id}/mark-submitted`)
       .set('Cookie', managerCookie);
     expect(markSubmitted.body.tender.status).toBe('SUBMITTED');
 
     // 9) المدير يسجّل النتيجة WON
     const won = await request(app)
-      .post(`/tenders/${id}/result`)
+      .post(`/v1/tenders/${id}/result`)
       .set('Cookie', managerCookie)
       .send({ result: 'WON' });
     expect(won.body.tender.status).toBe('WON');

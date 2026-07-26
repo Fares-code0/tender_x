@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import express from 'express';
+import express, { Router } from 'express';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -10,6 +10,9 @@ import { env } from './lib/env';
 import { prisma } from './lib/prisma';
 import { getRedisClient, type RedisClient } from './lib/redis';
 import { createLimiter } from './lib/rateLimit';
+import swaggerUi from 'swagger-ui-express';
+import { API_V1, UNVERSIONED_PATHS } from './lib/apiVersion';
+import { buildOpenApiDocument } from './openapi';
 import { logger as defaultLogger } from './lib/logger';
 import { createMetrics, routeLabel, type Metrics } from './lib/metrics';
 import { authRouter } from './routes/auth';
@@ -128,7 +131,7 @@ export function createApp(
       prefix: 'rl:global:',
       redis,
     });
-    const unlimitedPaths = new Set(['/health', '/livez', '/readyz', '/metrics']);
+    const unlimitedPaths = new Set<string>(UNVERSIONED_PATHS);
     app.use((req, res, next) => {
       if (unlimitedPaths.has(req.path)) return next();
       return globalLimiter(req, res, next);
@@ -136,7 +139,7 @@ export function createApp(
 
     // M8.2 — حد أضيق على تسجيل الدخول (حماية من التخمين): 5 محاولات/15 دقيقة → 429
     app.use(
-      '/auth/login',
+      `${API_V1}/auth/login`,
       createLimiter({
         windowMs: 15 * 60 * 1000,
         limit: 5,
@@ -157,16 +160,46 @@ export function createApp(
     });
   }
 
-  app.use('/auth', authRouter);
-  app.use('/admin/users', adminUsersRouter);
-  app.use('/admin/settings', settingsRouter);
-  app.use('/tenders', tendersRouter);
-  app.use('/checklist-templates', checklistTemplatesRouter);
-  app.use('/attachments', attachmentsRouter);
-  app.use('/notifications', notificationsRouter);
-  app.use('/dashboard', dashboardRouter);
-  app.use('/reports', reportsRouter);
-  app.use('/users', usersRouter);
+  // H6.4 — توثيق حيّ مُولَّد من مخططات Zod نفسها (لا يمكن أن ينحرف عن السلوك)
+  if (env.docsEnabled) {
+    const openApiDocument = buildOpenApiDocument();
+    app.get('/openapi.json', (_req, res) => {
+      res.json(openApiDocument);
+    });
+    // Swagger UI يحتاج سكربتات/أنماطًا مضمّنة؛ سياسة helmet الافتراضية تمنعها
+    // فتظهر الصفحة بيضاء بصمت. نخفّف السياسة **لهذا المسار وحده** لا عالميًا.
+    app.use(
+      '/docs',
+      helmet({
+        contentSecurityPolicy: {
+          directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'"],
+            styleSrc: ["'self'", "'unsafe-inline'"],
+            imgSrc: ["'self'", 'data:'],
+          },
+        },
+      }),
+      swaggerUi.serve,
+      swaggerUi.setup(openApiDocument),
+    );
+  }
+
+  // H6.3 — كل واجهة العمل تحت `/v1` حتى يمكن تقديم `/v2` لاحقًا بلا كسر العملاء.
+  // فحوص البنية (`/health`, `/livez`, `/readyz`, `/metrics`) تبقى بلا نسخة عمدًا:
+  // هي عقد مع المنسّق/الكاشط لا مع عملاء الـAPI، ولا يصح أن تتغيّر مع نسخة الواجهة.
+  const v1 = Router();
+  v1.use('/auth', authRouter);
+  v1.use('/admin/users', adminUsersRouter);
+  v1.use('/admin/settings', settingsRouter);
+  v1.use('/tenders', tendersRouter);
+  v1.use('/checklist-templates', checklistTemplatesRouter);
+  v1.use('/attachments', attachmentsRouter);
+  v1.use('/notifications', notificationsRouter);
+  v1.use('/dashboard', dashboardRouter);
+  v1.use('/reports', reportsRouter);
+  v1.use('/users', usersRouter);
+  app.use(API_V1, v1);
 
   app.use(errorHandler);
   return app;

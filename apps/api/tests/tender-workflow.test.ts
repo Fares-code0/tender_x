@@ -33,11 +33,11 @@ async function reviewedTender(app: Express) {
   const qaCookie = await loginAs(app, qa.email);
   const writerCookie = await loginAs(app, writer.email);
   const managerCookie = await loginAs(app, manager.email);
-  const created = await request(app).post('/tenders').set('Cookie', qaCookie).send(validTender);
+  const created = await request(app).post('/v1/tenders').set('Cookie', qaCookie).send(validTender);
   const id = created.body.tender.id as string;
-  await request(app).post(`/tenders/${id}/review/start`).set('Cookie', qaCookie);
+  await request(app).post(`/v1/tenders/${id}/review/start`).set('Cookie', qaCookie);
   await request(app)
-    .put(`/tenders/${id}/checklist`)
+    .put(`/v1/tenders/${id}/checklist`)
     .set('Cookie', qaCookie)
     .send({ answers: template.items.map((it) => ({ itemId: it.id, checked: true })) });
   return { id, qa, writer, manager, qaCookie, writerCookie, managerCookie };
@@ -46,7 +46,7 @@ async function reviewedTender(app: Express) {
 async function assignedTender(app: Express) {
   const ctx = await reviewedTender(app);
   await request(app)
-    .post(`/tenders/${ctx.id}/assign`)
+    .post(`/v1/tenders/${ctx.id}/assign`)
     .set('Cookie', ctx.qaCookie)
     .send({ assigneeId: ctx.writer.id });
   return ctx;
@@ -54,7 +54,7 @@ async function assignedTender(app: Express) {
 
 async function pendingApprovalTender(app: Express) {
   const ctx = await assignedTender(app);
-  await request(app).post(`/tenders/${ctx.id}/submit-for-approval`).set('Cookie', ctx.writerCookie);
+  await request(app).post(`/v1/tenders/${ctx.id}/submit-for-approval`).set('Cookie', ctx.writerCookie);
   return ctx;
 }
 
@@ -64,7 +64,7 @@ describe('POST /tenders/:id/assign (M4.2)', () => {
   it('QA assigns a WRITER: UNDER_REVIEW → PROPOSAL_PREPARATION + assignee set', async () => {
     const { id, writer, qaCookie } = await reviewedTender(app);
     const res = await request(app)
-      .post(`/tenders/${id}/assign`)
+      .post(`/v1/tenders/${id}/assign`)
       .set('Cookie', qaCookie)
       .send({ assigneeId: writer.id });
     expect(res.status).toBe(200);
@@ -75,7 +75,7 @@ describe('POST /tenders/:id/assign (M4.2)', () => {
   it('assigning a non-writer is rejected: 422', async () => {
     const { id, manager, qaCookie } = await reviewedTender(app);
     const res = await request(app)
-      .post(`/tenders/${id}/assign`)
+      .post(`/v1/tenders/${id}/assign`)
       .set('Cookie', qaCookie)
       .send({ assigneeId: manager.id });
     expect(res.status).toBe(422);
@@ -89,7 +89,7 @@ describe('POST /tenders/:id/submit-for-approval (M4.3)', () => {
   it('assigned writer submits: PROPOSAL_PREPARATION → PENDING_APPROVAL', async () => {
     const { id, writerCookie } = await assignedTender(app);
     const res = await request(app)
-      .post(`/tenders/${id}/submit-for-approval`)
+      .post(`/v1/tenders/${id}/submit-for-approval`)
       .set('Cookie', writerCookie);
     expect(res.status).toBe(200);
     expect(res.body.tender.status).toBe('PENDING_APPROVAL');
@@ -100,7 +100,7 @@ describe('POST /tenders/:id/submit-for-approval (M4.3)', () => {
     const other = await createUser('WRITER');
     const otherCookie = await loginAs(app, other.email);
     const res = await request(app)
-      .post(`/tenders/${id}/submit-for-approval`)
+      .post(`/v1/tenders/${id}/submit-for-approval`)
       .set('Cookie', otherCookie);
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe('NOT_ASSIGNEE');
@@ -113,7 +113,7 @@ describe('POST /tenders/:id/manager-decision (M4.4)', () => {
   it('approve sets managerApprovedAt and keeps PENDING_APPROVAL', async () => {
     const { id, managerCookie } = await pendingApprovalTender(app);
     const res = await request(app)
-      .post(`/tenders/${id}/manager-decision`)
+      .post(`/v1/tenders/${id}/manager-decision`)
       .set('Cookie', managerCookie)
       .send({ decision: 'approve' });
     expect(res.status).toBe(200);
@@ -124,7 +124,7 @@ describe('POST /tenders/:id/manager-decision (M4.4)', () => {
   it('return without notes is rejected: 422 (BR-011)', async () => {
     const { id, managerCookie } = await pendingApprovalTender(app);
     const res = await request(app)
-      .post(`/tenders/${id}/manager-decision`)
+      .post(`/v1/tenders/${id}/manager-decision`)
       .set('Cookie', managerCookie)
       .send({ decision: 'return' });
     expect(res.status).toBe(422);
@@ -133,7 +133,7 @@ describe('POST /tenders/:id/manager-decision (M4.4)', () => {
   it('return with notes sends it back to the same writer + clears approval', async () => {
     const { id, writer, managerCookie } = await pendingApprovalTender(app);
     const res = await request(app)
-      .post(`/tenders/${id}/manager-decision`)
+      .post(`/v1/tenders/${id}/manager-decision`)
       .set('Cookie', managerCookie)
       .send({ decision: 'return', notes: 'يرجى تحسين الجدول الزمني' });
     expect(res.status).toBe(200);
@@ -145,7 +145,7 @@ describe('POST /tenders/:id/manager-decision (M4.4)', () => {
   it('stop rejects the tender: PENDING_APPROVAL → REJECTED', async () => {
     const { id, managerCookie } = await pendingApprovalTender(app);
     const res = await request(app)
-      .post(`/tenders/${id}/manager-decision`)
+      .post(`/v1/tenders/${id}/manager-decision`)
       .set('Cookie', managerCookie)
       .send({ decision: 'stop', reason: 'خارج نطاق الشركة' });
     expect(res.status).toBe(200);
@@ -159,7 +159,7 @@ describe('POST /tenders/:id/mark-submitted + /result (M4.5)', () => {
 
   it('mark-submitted on a not-yet-approved tender is rejected: 422 (BR-004)', async () => {
     const { id, managerCookie } = await pendingApprovalTender(app);
-    const res = await request(app).post(`/tenders/${id}/mark-submitted`).set('Cookie', managerCookie);
+    const res = await request(app).post(`/v1/tenders/${id}/mark-submitted`).set('Cookie', managerCookie);
     expect(res.status).toBe(422);
     expect(res.body.error.code).toBe('NOT_APPROVED');
   });
@@ -167,16 +167,16 @@ describe('POST /tenders/:id/mark-submitted + /result (M4.5)', () => {
   it('mark-submitted after approval → SUBMITTED, then result WON → WON', async () => {
     const { id, managerCookie } = await pendingApprovalTender(app);
     await request(app)
-      .post(`/tenders/${id}/manager-decision`)
+      .post(`/v1/tenders/${id}/manager-decision`)
       .set('Cookie', managerCookie)
       .send({ decision: 'approve' });
 
-    const sub = await request(app).post(`/tenders/${id}/mark-submitted`).set('Cookie', managerCookie);
+    const sub = await request(app).post(`/v1/tenders/${id}/mark-submitted`).set('Cookie', managerCookie);
     expect(sub.status).toBe(200);
     expect(sub.body.tender.status).toBe('SUBMITTED');
 
     const result = await request(app)
-      .post(`/tenders/${id}/result`)
+      .post(`/v1/tenders/${id}/result`)
       .set('Cookie', managerCookie)
       .send({ result: 'WON' });
     expect(result.status).toBe(200);

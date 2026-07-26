@@ -212,7 +212,7 @@ describe('User report is not N+1 (H4.2)', () => {
 
     captured.length = 0;
     recording = true;
-    const res = await request(app).get('/reports/summary').set('Cookie', cookie);
+    const res = await request(app).get('/v1/reports/summary').set('Cookie', cookie);
     // أحداث الاستعلام غير متزامنة — امنحها فرصة للوصول قبل القياس
     await new Promise((r) => setTimeout(r, 100));
     recording = false;
@@ -249,7 +249,7 @@ describe('User report is not N+1 (H4.2)', () => {
     });
 
     const cookie = await loginAs(app, manager.email);
-    const res = await request(app).get('/reports/summary').set('Cookie', cookie);
+    const res = await request(app).get('/v1/reports/summary').set('Cookie', cookie);
 
     const row = res.body.byUser.find((u: { userId: string }) => u.userId === qa.id);
     expect(row.tendersCreated).toBe(1);

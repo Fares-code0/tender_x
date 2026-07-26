@@ -17,7 +17,7 @@ describe('Pagination on previously unbounded lists (H4.3)', () => {
     const qa = await createUser('QA');
     const manager = await createUser('MANAGER');
     const qaCookie = await loginAs(app, qa.email);
-    const created = await request(app).post('/tenders').set('Cookie', qaCookie).send({
+    const created = await request(app).post('/v1/tenders').set('Cookie', qaCookie).send({
       title: 'مناقصة',
       entity: 'جهة',
       closingDate: '2026-12-01T00:00:00.000Z',
@@ -33,7 +33,7 @@ describe('Pagination on previously unbounded lists (H4.3)', () => {
 
     const cookie = await loginAs(app, manager.email);
     const firstPage = await request(app)
-      .get(`/tenders/${tenderId}/audit?page=1&pageSize=3`)
+      .get(`/v1/tenders/${tenderId}/audit?page=1&pageSize=3`)
       .set('Cookie', cookie);
 
     expect(firstPage.status).toBe(200);
@@ -42,7 +42,7 @@ describe('Pagination on previously unbounded lists (H4.3)', () => {
     expect(firstPage.body.page).toBe(1);
 
     const secondPage = await request(app)
-      .get(`/tenders/${tenderId}/audit?page=2&pageSize=3`)
+      .get(`/v1/tenders/${tenderId}/audit?page=2&pageSize=3`)
       .set('Cookie', cookie);
     expect(secondPage.body.entries).toHaveLength(3);
     // صفحة مختلفة فعلًا
@@ -54,7 +54,7 @@ describe('Pagination on previously unbounded lists (H4.3)', () => {
     const cookie = await loginAs(app, manager.email);
 
     const res = await request(app)
-      .get(`/users?pageSize=${MAX_PAGE_SIZE + 1}`)
+      .get(`/v1/users?pageSize=${MAX_PAGE_SIZE + 1}`)
       .set('Cookie', cookie);
 
     expect(res.status).toBe(422);
@@ -64,7 +64,7 @@ describe('Pagination on previously unbounded lists (H4.3)', () => {
     const me = await createUser('MANAGER');
     const cookie = await loginAs(app, me.email);
 
-    const res = await request(app).get('/users?pageSize=2').set('Cookie', cookie);
+    const res = await request(app).get('/v1/users?pageSize=2').set('Cookie', cookie);
 
     expect(res.status).toBe(200);
     expect(res.body.users.length).toBeLessThanOrEqual(2);
@@ -77,7 +77,7 @@ describe('Pagination on previously unbounded lists (H4.3)', () => {
     for (let i = 0; i < 4; i++) await createUser('QA');
     const cookie = await loginAs(app, admin.email);
 
-    const res = await request(app).get('/admin/users?page=1&pageSize=2').set('Cookie', cookie);
+    const res = await request(app).get('/v1/admin/users?page=1&pageSize=2').set('Cookie', cookie);
 
     expect(res.status).toBe(200);
     expect(res.body.users).toHaveLength(2);
@@ -113,7 +113,7 @@ describe('Streaming uploads and downloads (H4.5)', () => {
     const writer = await createUser('WRITER');
     const qa = await createUser('QA');
     const qaCookie = await loginAs(app, qa.email);
-    const created = await request(app).post('/tenders').set('Cookie', qaCookie).send({
+    const created = await request(app).post('/v1/tenders').set('Cookie', qaCookie).send({
       title: 'مناقصة',
       entity: 'جهة',
       closingDate: '2026-12-01T00:00:00.000Z',
@@ -132,7 +132,7 @@ describe('Streaming uploads and downloads (H4.5)', () => {
     const big = Buffer.alloc(5 * 1024 * 1024, 'a');
 
     const uploaded = await request(app)
-      .post(`/tenders/${tenderId}/attachments`)
+      .post(`/v1/tenders/${tenderId}/attachments`)
       .set('Cookie', writerCookie)
       .attach('file', big, 'big.pdf');
 
@@ -140,7 +140,7 @@ describe('Streaming uploads and downloads (H4.5)', () => {
     expect(uploaded.body.attachment.size).toBe(big.length);
 
     const downloaded = await request(app)
-      .get(`/attachments/${uploaded.body.attachment.id}/download`)
+      .get(`/v1/attachments/${uploaded.body.attachment.id}/download`)
       .set('Cookie', writerCookie)
       .buffer(true)
       .parse((res, cb) => {
@@ -159,7 +159,7 @@ describe('Streaming uploads and downloads (H4.5)', () => {
 
     // مناقصة غير موجودة → يفشل بعد استلام الملف
     const res = await request(app)
-      .post('/tenders/does-not-exist/attachments')
+      .post('/v1/tenders/does-not-exist/attachments')
       .set('Cookie', writerCookie)
       .attach('file', Buffer.from('hello'), 'x.pdf');
 

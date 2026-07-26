@@ -23,7 +23,7 @@ describe('Checklist templates API (M3.1)', () => {
     const manager = await createUser('MANAGER');
     const cookie = await loginAs(app, manager.email);
     const res = await request(app)
-      .post('/checklist-templates')
+      .post('/v1/checklist-templates')
       .set('Cookie', cookie)
       .send(sampleTemplate);
     expect(res.status).toBe(201);
@@ -45,13 +45,13 @@ describe('Checklist templates API (M3.1)', () => {
     const admin = await createUser('ADMIN');
     const cookie = await loginAs(app, admin.email);
     const created = await request(app)
-      .post('/checklist-templates')
+      .post('/v1/checklist-templates')
       .set('Cookie', cookie)
       .send(sampleTemplate);
     const items = created.body.template.items as { id: string; text: string; order: number }[];
 
     const res = await request(app)
-      .patch(`/checklist-templates/${created.body.template.id}`)
+      .patch(`/v1/checklist-templates/${created.body.template.id}`)
       .set('Cookie', cookie)
       .send({
         items: [
@@ -68,7 +68,7 @@ describe('Checklist templates API (M3.1)', () => {
     const qa = await createUser('QA');
     const cookie = await loginAs(app, qa.email);
     const res = await request(app)
-      .post('/checklist-templates')
+      .post('/v1/checklist-templates')
       .set('Cookie', cookie)
       .send(sampleTemplate);
     expect(res.status).toBe(403);

@@ -82,14 +82,14 @@ describe('Structured request logging (H3.1)', () => {
     const user = await createUser('QA');
 
     const login = await request(app)
-      .post('/auth/login')
+      .post('/v1/auth/login')
       .send({ email: user.email, password: TEST_PASSWORD });
     expect(login.status).toBe(200);
 
     // أعد استخدام الكوكي في طلب لاحق حتى تمرّ ترويسة Cookie عبر المسجّل
     const cookie = login.headers['set-cookie'];
     await request(app)
-      .get('/auth/me')
+      .get('/v1/auth/me')
       .set('Cookie', Array.isArray(cookie) ? cookie.join('; ') : String(cookie));
 
     const output = raw();
@@ -196,8 +196,8 @@ describe('Prometheus metrics (H3.3)', () => {
 
     await request(app).get('/livez');
     // استهلك الحد العام
-    await request(app).get('/tenders');
-    expect((await request(app).get('/tenders')).status).toBe(429);
+    await request(app).get('/v1/tenders');
+    expect((await request(app).get('/v1/tenders')).status).toBe(429);
 
     // الكاشط يجب أن يظل قادرًا على السحب
     expect((await request(app).get('/metrics')).status).toBe(200);

@@ -34,7 +34,7 @@ async function seedTemplate() {
 async function newTenderAsQa() {
   const qa = await createUser('QA');
   const cookie = await loginAs(app, qa.email);
-  const created = await request(app).post('/tenders').set('Cookie', cookie).send(validTender);
+  const created = await request(app).post('/v1/tenders').set('Cookie', cookie).send(validTender);
   return { qa, cookie, id: created.body.tender.id as string };
 }
 
@@ -45,7 +45,7 @@ describe('POST /tenders/:id/review/start (M3.3)', () => {
 
   it('QA moves NEW → UNDER_REVIEW + status history + audit', async () => {
     const { cookie, id } = await newTenderAsQa();
-    const res = await request(app).post(`/tenders/${id}/review/start`).set('Cookie', cookie);
+    const res = await request(app).post(`/v1/tenders/${id}/review/start`).set('Cookie', cookie);
     expect(res.status).toBe(200);
     expect(res.body.tender.status).toBe('UNDER_REVIEW');
 
@@ -62,7 +62,7 @@ describe('POST /tenders/:id/review/start (M3.3)', () => {
   it('rejects starting review on a non-NEW tender: 422', async () => {
     const { cookie, id } = await newTenderAsQa();
     await prisma.tender.update({ where: { id }, data: { status: 'SUBMITTED' } });
-    const res = await request(app).post(`/tenders/${id}/review/start`).set('Cookie', cookie);
+    const res = await request(app).post(`/v1/tenders/${id}/review/start`).set('Cookie', cookie);
     expect(res.status).toBe(422);
     expect(res.body.error.code).toBe('INVALID_TRANSITION');
   });
@@ -71,7 +71,7 @@ describe('POST /tenders/:id/review/start (M3.3)', () => {
     const { id } = await newTenderAsQa();
     const writer = await createUser('WRITER');
     const wcookie = await loginAs(app, writer.email);
-    const res = await request(app).post(`/tenders/${id}/review/start`).set('Cookie', wcookie);
+    const res = await request(app).post(`/v1/tenders/${id}/review/start`).set('Cookie', wcookie);
     expect(res.status).toBe(403);
   });
 });
@@ -84,10 +84,10 @@ describe('PUT/GET /tenders/:id/checklist (M3.4)', () => {
   it('saves answers and retrieves them matching what was sent', async () => {
     const template = await seedTemplate();
     const { cookie, id } = await newTenderAsQa();
-    await request(app).post(`/tenders/${id}/review/start`).set('Cookie', cookie);
+    await request(app).post(`/v1/tenders/${id}/review/start`).set('Cookie', cookie);
 
     const put = await request(app)
-      .put(`/tenders/${id}/checklist`)
+      .put(`/v1/tenders/${id}/checklist`)
       .set('Cookie', cookie)
       .send({
         answers: [
@@ -97,7 +97,7 @@ describe('PUT/GET /tenders/:id/checklist (M3.4)', () => {
       });
     expect(put.status).toBe(200);
 
-    const get = await request(app).get(`/tenders/${id}/checklist`).set('Cookie', cookie);
+    const get = await request(app).get(`/v1/tenders/${id}/checklist`).set('Cookie', cookie);
     expect(get.status).toBe(200);
     expect(get.body.items).toHaveLength(2);
     expect(get.body.items[0]).toMatchObject({
@@ -117,7 +117,7 @@ describe('POST /tenders/:id/review/decision (M3.5)', () => {
   async function underReviewTender() {
     const template = await seedTemplate();
     const { cookie, id } = await newTenderAsQa();
-    await request(app).post(`/tenders/${id}/review/start`).set('Cookie', cookie);
+    await request(app).post(`/v1/tenders/${id}/review/start`).set('Cookie', cookie);
     return { template, cookie, id };
   }
 
@@ -125,12 +125,12 @@ describe('POST /tenders/:id/review/decision (M3.5)', () => {
     const { template, cookie, id } = await underReviewTender();
     // بند واحد فقط مؤشَّر من بندين
     await request(app)
-      .put(`/tenders/${id}/checklist`)
+      .put(`/v1/tenders/${id}/checklist`)
       .set('Cookie', cookie)
       .send({ answers: [{ itemId: template.items[0].id, checked: true }] });
 
     const res = await request(app)
-      .post(`/tenders/${id}/review/decision`)
+      .post(`/v1/tenders/${id}/review/decision`)
       .set('Cookie', cookie)
       .send({ decision: 'approve' });
     expect(res.status).toBe(422);
@@ -140,7 +140,7 @@ describe('POST /tenders/:id/review/decision (M3.5)', () => {
   it('reject without a reason: 422 (BR-002)', async () => {
     const { cookie, id } = await underReviewTender();
     const res = await request(app)
-      .post(`/tenders/${id}/review/decision`)
+      .post(`/v1/tenders/${id}/review/decision`)
       .set('Cookie', cookie)
       .send({ decision: 'reject', rejectionReason: '' });
     expect(res.status).toBe(422);
@@ -149,7 +149,7 @@ describe('POST /tenders/:id/review/decision (M3.5)', () => {
   it('reject with a reason: sets REJECTED + stores reason + status history', async () => {
     const { cookie, id } = await underReviewTender();
     const res = await request(app)
-      .post(`/tenders/${id}/review/decision`)
+      .post(`/v1/tenders/${id}/review/decision`)
       .set('Cookie', cookie)
       .send({ decision: 'reject', rejectionReason: 'عدم توافق النشاط مع المناقصة' });
     expect(res.status).toBe(200);
@@ -165,14 +165,14 @@ describe('POST /tenders/:id/review/decision (M3.5)', () => {
   it('approve with a complete checklist: succeeds and stays UNDER_REVIEW', async () => {
     const { template, cookie, id } = await underReviewTender();
     await request(app)
-      .put(`/tenders/${id}/checklist`)
+      .put(`/v1/tenders/${id}/checklist`)
       .set('Cookie', cookie)
       .send({
         answers: template.items.map((it) => ({ itemId: it.id, checked: true })),
       });
 
     const res = await request(app)
-      .post(`/tenders/${id}/review/decision`)
+      .post(`/v1/tenders/${id}/review/decision`)
       .set('Cookie', cookie)
       .send({ decision: 'approve' });
     expect(res.status).toBe(200);

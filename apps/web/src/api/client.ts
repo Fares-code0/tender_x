@@ -8,8 +8,14 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * H6.3 — كل نداءات الواجهة تمرّ من هنا، فبادئة نسخة الـAPI تُضبط في مكان واحد.
+ * الترقية إلى `/v2` لاحقًا تغيير سطر واحد لا بحث في كل الملفات.
+ */
+export const API_BASE = '/api/v1';
+
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(`${API_BASE}${path}`, {
     credentials: 'include',
     headers: { 'Content-Type': 'application/json', ...options.headers },
     ...options,

@@ -11,7 +11,7 @@ const app = createApp();
 const WRONG = 'definitely-wrong-password';
 
 async function failLogin(email: string) {
-  return request(app).post('/auth/login').send({ email, password: WRONG });
+  return request(app).post('/v1/auth/login').send({ email, password: WRONG });
 }
 
 describe('Account lockout after repeated failed logins (H2.3)', () => {
@@ -41,7 +41,7 @@ describe('Account lockout after repeated failed logins (H2.3)', () => {
     for (let i = 0; i < env.loginMaxFailedAttempts; i++) await failLogin(user.email);
 
     const res = await request(app)
-      .post('/auth/login')
+      .post('/v1/auth/login')
       .send({ email: user.email, password: TEST_PASSWORD });
 
     expect(res.status).toBe(423);
@@ -59,7 +59,7 @@ describe('Account lockout after repeated failed logins (H2.3)', () => {
     });
 
     const res = await request(app)
-      .post('/auth/login')
+      .post('/v1/auth/login')
       .send({ email: user.email, password: TEST_PASSWORD });
 
     expect(res.status).toBe(200);
@@ -73,7 +73,7 @@ describe('Account lockout after repeated failed logins (H2.3)', () => {
     expect((await prisma.user.findUnique({ where: { id: user.id } }))!.failedLoginAttempts).toBe(2);
 
     const ok = await request(app)
-      .post('/auth/login')
+      .post('/v1/auth/login')
       .send({ email: user.email, password: TEST_PASSWORD });
     expect(ok.status).toBe(200);
 
@@ -90,7 +90,7 @@ describe('Account lockout after repeated failed logins (H2.3)', () => {
 
     // حساب آخر لم يتأثر بقفل الأول
     const res = await request(app)
-      .post('/auth/login')
+      .post('/v1/auth/login')
       .send({ email: other.email, password: TEST_PASSWORD });
     expect(res.status).toBe(200);
   });

@@ -55,6 +55,11 @@ const envSchema = z.object({
   AWS_REGION: z.string().min(1).optional(),
   // H5.3 — مدة صلاحية الكاش للقراءات الساخنة (ثوانٍ)
   CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(30),
+  // H6.4 — كشف /docs و/openapi.json. اضبطه false لإخفاء التوثيق في بيئة عامة.
+  DOCS_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
 });
 
 export interface Env {
@@ -78,6 +83,7 @@ export interface Env {
   s3Prefix?: string;
   awsRegion?: string;
   cacheTtlSeconds: number;
+  docsEnabled: boolean;
 }
 
 /**
@@ -122,6 +128,7 @@ export function parseEnv(source: NodeJS.ProcessEnv = process.env): Env {
     s3Prefix: v.S3_PREFIX,
     awsRegion: v.AWS_REGION,
     cacheTtlSeconds: v.CACHE_TTL_SECONDS,
+    docsEnabled: v.DOCS_ENABLED,
   };
 }
 

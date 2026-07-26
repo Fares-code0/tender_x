@@ -17,13 +17,13 @@ async function reviewedTender(app: Express) {
   const writer = await createUser('WRITER');
   const qaCookie = await loginAs(app, qa.email);
   const created = await request(app)
-    .post('/tenders')
+    .post('/v1/tenders')
     .set('Cookie', qaCookie)
     .send({ title: 'مناقصة إشعارات', entity: 'جهة', closingDate: '2026-12-01T00:00:00.000Z' });
   const id = created.body.tender.id as string;
-  await request(app).post(`/tenders/${id}/review/start`).set('Cookie', qaCookie);
+  await request(app).post(`/v1/tenders/${id}/review/start`).set('Cookie', qaCookie);
   await request(app)
-    .put(`/tenders/${id}/checklist`)
+    .put(`/v1/tenders/${id}/checklist`)
     .set('Cookie', qaCookie)
     .send({ answers: template.items.map((it) => ({ itemId: it.id, checked: true })) });
   return { id, qa, writer, qaCookie };
@@ -35,7 +35,7 @@ describe('Notifications from workflow events (M6.1)', () => {
   it('assigning a tender notifies the assigned writer specifically', async () => {
     const { id, writer, qa, qaCookie } = await reviewedTender(app);
     const res = await request(app)
-      .post(`/tenders/${id}/assign`)
+      .post(`/v1/tenders/${id}/assign`)
       .set('Cookie', qaCookie)
       .send({ assigneeId: writer.id });
     expect(res.status).toBe(200);
@@ -58,10 +58,10 @@ describe('Notifications from workflow events (M6.1)', () => {
     const manager = await createUser('MANAGER');
     const writerCookie = await loginAs(app, writer.email);
     await request(app)
-      .post(`/tenders/${id}/assign`)
+      .post(`/v1/tenders/${id}/assign`)
       .set('Cookie', qaCookie)
       .send({ assigneeId: writer.id });
-    await request(app).post(`/tenders/${id}/submit-for-approval`).set('Cookie', writerCookie);
+    await request(app).post(`/v1/tenders/${id}/submit-for-approval`).set('Cookie', writerCookie);
 
     const mgrNotifs = await prisma.notification.count({
       where: { userId: manager.id, type: 'SUBMITTED_FOR_APPROVAL', tenderId: id },
@@ -82,7 +82,7 @@ describe('Notifications API (M6.3)', () => {
         { userId: user.id, type: 'ASSIGNED', message: 'ب' },
       ],
     });
-    const res = await request(app).get('/notifications').set('Cookie', cookie);
+    const res = await request(app).get('/v1/notifications').set('Cookie', cookie);
     expect(res.status).toBe(200);
     expect(res.body.notifications).toHaveLength(2);
     expect(res.body.unreadCount).toBe(2);
@@ -94,11 +94,11 @@ describe('Notifications API (M6.3)', () => {
     const n = await prisma.notification.create({
       data: { userId: user.id, type: 'ASSIGNED', message: 'ب' },
     });
-    const read = await request(app).post(`/notifications/${n.id}/read`).set('Cookie', cookie);
+    const read = await request(app).post(`/v1/notifications/${n.id}/read`).set('Cookie', cookie);
     expect(read.status).toBe(200);
     expect(read.body.notification.isRead).toBe(true);
 
-    const after = await request(app).get('/notifications').set('Cookie', cookie);
+    const after = await request(app).get('/v1/notifications').set('Cookie', cookie);
     expect(after.body.unreadCount).toBe(0);
   });
 
@@ -109,12 +109,12 @@ describe('Notifications API (M6.3)', () => {
     const n = await prisma.notification.create({
       data: { userId: owner.id, type: 'ASSIGNED', message: 'ب' },
     });
-    const res = await request(app).post(`/notifications/${n.id}/read`).set('Cookie', otherCookie);
+    const res = await request(app).post(`/v1/notifications/${n.id}/read`).set('Cookie', otherCookie);
     expect(res.status).toBe(404);
   });
 
   it('requires auth: 401', async () => {
-    const res = await request(app).get('/notifications');
+    const res = await request(app).get('/v1/notifications');
     expect(res.status).toBe(401);
   });
 });
