@@ -1,0 +1,112 @@
+# H7.2 — تكامل مستمر: يمنع دمج ما لا يجتاز بوابة الخروج نفسها المستخدمة محليًا
+# (`pnpm lint && pnpm test && pnpm build`) مع فحص إضافي لحالة الهجرات.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# إلغاء التشغيلات القديمة لنفس الفرع بدل مراكمتها
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # الاختبارات تحتاج PostgreSQL حقيقيًا (نفس ما يفعله embedded-postgres محليًا)
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: tender_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    # H7.3 — لا أسرار حقيقية هنا عمدًا: القاعدة مؤقتة داخل الـrunner والسرّ اختباري
+    # صريح. حقن السرّ الحقيقي في وظيفة اختبار يوسّع سطح التعرّض بلا فائدة.
+    # أسرار النشر (عند إضافته) تُقرأ من GitHub Secrets — راجع docs/operations/secrets.md
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/tender_test
+      JWT_SECRET: ci-only-secret-not-used-in-any-real-environment
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # `--frozen-lockfile` يفشل إن كان القفل غير متزامن مع package.json
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @tender/api exec prisma generate
+
+      - name: Lint
+        run: pnpm lint
+
+      # فحص حالة الهجرات: يفشل إن كان المخطط يحتاج هجرة لم تُنشأ بعد
+      # قاعدة ظِل **منفصلة**: Prisma يعيد تهيئة قاعدة الظل، فتوجيهها إلى قاعدة
+      # الاختبارات يمسح سجل هجراتها ويكسر تشغيل الاختبارات بعدها.
+      - name: Create a separate shadow database
+        run: >-
+          PGPASSWORD=postgres psql -h localhost -U postgres -d postgres
+          -c "CREATE DATABASE tender_shadow ENCODING 'UTF8' TEMPLATE template0"
+
+      # يفشل (exit 2) إن كان `schema.prisma` يحتاج هجرة لم تُنشأ بعد
+      - name: Check migrations are in sync with the schema
+        run: >-
+          pnpm --filter @tender/api exec prisma migrate diff
+          --from-migrations prisma/migrations
+          --to-schema-datamodel prisma/schema.prisma
+          --shadow-database-url "postgresql://postgres:postgres@localhost:5432/tender_shadow"
+          --exit-code
+
+      - name: Apply migrations
+        run: pnpm --filter @tender/api exec prisma migrate deploy
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+  # فحص أمني للتبعيات — منفصل حتى لا يحجب البوابة الأساسية عند ثغرة في تبعية غير مباشرة
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # يحجب الدمج على تبعيات **الإنتاج** فقط: ثغرات أدوات التطوير (eslint وغيرها)
+      # لا تصل إلى الصورة المنشورة، ولا يصح أن توقف التسليم.
+      - name: Audit production dependencies (high severity and above)
+        run: pnpm audit --prod --audit-level high
+
+      # تقرير غير حاجب لبقية الثغرات (تطويرية/متوسطة) حتى تبقى مرئية
+      - name: Report all advisories (non-blocking)
+        run: pnpm audit || true
