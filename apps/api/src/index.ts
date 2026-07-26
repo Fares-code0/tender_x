@@ -5,20 +5,21 @@ import { prisma } from './lib/prisma';
 import { runClosingReminders } from './services/closingReminder';
 import { createGracefulShutdown } from './lib/shutdown';
 import { closeRedis } from './lib/redis';
+import { logger } from './lib/logger';
 
 const app = createApp();
 
 const server = app.listen(env.port, () => {
-  console.log(`API listening on http://localhost:${env.port}`);
+  logger.info({ port: env.port }, 'API listening');
 });
 
 // M6.2 — تنبيه اقتراب موعد الإغلاق: يوميًا الساعة 08:00
 const reminderTask = cron.schedule('0 8 * * *', () => {
   runClosingReminders()
     .then((count) => {
-      if (count > 0) console.log(`Closing-reminder job created ${count} notification(s).`);
+      if (count > 0) logger.info({ count }, 'Closing-reminder job created notifications');
     })
-    .catch((err) => console.error('Closing-reminder job failed:', err));
+    .catch((err) => logger.error({ err }, 'Closing-reminder job failed'));
 });
 
 // H0.3 — إيقاف رشيق عند SIGTERM/SIGINT

@@ -1,5 +1,6 @@
 import Redis from 'ioredis';
 import { env } from './env';
+import { logger } from './logger';
 
 /**
  * H2.1 — عميل Redis المشترك لتحديد المعدل الموزّع.
@@ -27,7 +28,7 @@ export function getRedisClient(): Redis | null {
   });
 
   client.on('error', (err: Error) => {
-    console.error('Redis connection error:', err.message);
+    logger.error({ err }, 'Redis connection error');
   });
 
   return client;

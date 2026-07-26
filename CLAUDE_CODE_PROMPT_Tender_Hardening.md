@@ -93,15 +93,19 @@
 
 ## H3 — المراقبة والملاحظة (Observability) 🟠
 
-- [ ] **H3.1** — logging منظّم + request logging. (Finding #10 — `console.*` فقط في `errors.ts:40`, `index.ts`)
+- [x] **H3.1** — logging منظّم + request logging. (Finding #10 — `console.*` فقط في `errors.ts:40`, `index.ts`)
   - المطلوب: `pino` + `pino-http`، مستويات، بلا تسريب أسرار.
   - ✅ Verify: كل طلب يُسجَّل بسطر JSON منظّم.
-- [ ] **H3.2** — Correlation/Request IDs.
+  - Verified: `src/lib/logger.ts` (pino، وقت ISO، مستوى نصّي، `redact` لترويسات الاعتماد/الكوكيز وحقول `password`/`token`) + `pino-http` في `app.ts`؛ حُذف كل `console.*` من `errors.ts` و`index.ts` و`redis.ts`. الاختبار يلتقط المخرَج الفعلي عبر stream ويؤكد سطر JSON واحد لكل طلب فيه `req.method`/`req.url`/`res.statusCode`/`responseTime`، وأن 4xx تُسجَّل `warn`. واختبار تسريب: بعد دخول حقيقي وطلب بالكوكي، لا تظهر كلمة المرور ولا قيمة التوكن ويظهر `[REDACTED]`. أخضر.
+- [x] **H3.2** — Correlation/Request IDs.
   - ✅ Verify: كل طلب/سجل يحمل `x-request-id` قابلًا للتتبّع.
-- [ ] **H3.3** — Metrics (`prom-client` + `/metrics`). (Finding #11)
+  - Verified: `genReqId` يحترم `x-request-id` القادم أو يولّد UUID، ويعيده دائمًا في ترويسة الاستجابة، ويظهر في سطر السجل (`req.id`). 3 اختبارات: توليد وإرجاع، احترام معرّف وارد (تتبّع عبر الخدمات)، واختلاف المعرّف بين طلبين. أخضر.
+- [x] **H3.3** — Metrics (`prom-client` + `/metrics`). (Finding #11)
   - ✅ Verify: `/metrics` يعرض عدّادات RED الأساسية.
+  - Verified: `src/lib/metrics.ts` بسجل (Registry) مستقل + مقاييس العملية الافتراضية + `http_requests_total` و`http_request_duration_seconds` بتسميات `method/route/status`. المسار يُطبَّع إلى قالب الراوتر (`/tenders/:id`) والمسارات غير المطابقة تُجمع تحت `__unmatched__` لتقييد الـcardinality. `/metrics` مستثنى من تحديد المعدل. 5 اختبارات خضراء.
 - [ ] **H3.4** — Tracing (OpenTelemetry) — اختياري حسب البنية.
   - ✅ Verify: أثر موزّع يظهر لطلب كامل.
+  - مؤجّل بقرار: البند **اختياري حسب البنية**، وبوابة H3 لا تشترطه (سجلات + مقاييس + correlation IDs فقط). التحقق منه («أثر موزّع يظهر لطلب كامل») يتطلب مُجمِّعًا/خلفية تتبّع (Jaeger/OTLP collector) وهي غير متاحة بلا Docker على هذا الجهاز، كما يضيف حزمة تبعيات OTel كبيرة ⇒ يحتاج قرارك (قاعدة 7). معرّف الارتباط `x-request-id` (H3.2) يغطّي التتبّع الأساسي عبر الطلبات حاليًا.
 
 **🔒 بوابة H3:** سجلات + مقاييس + correlation IDs في كل الطلبات.
 
@@ -207,11 +211,11 @@
 | H2.1 — Redis-backed limiter | 🟠 | ✅ مكتمل ومُتحقَّق | 2026-07-26 | عدّاد مشترك بين نسختين (اختبار تكامل) |
 | H2.2 — حدود عامة + `Retry-After` | 🟠 | ✅ مكتمل ومُتحقَّق | 2026-07-26 | حد عام 300/15د + 429 يتضمن Retry-After |
 | H2.3 — قفل تخمين على مستوى الحساب | 🟠 | ✅ مكتمل ومُتحقَّق | 2026-07-26 | 5 محاولات → قفل 15د (423 ACCOUNT_LOCKED) |
-| **H3 — Observability** | 🟠 | ⬜ لم يبدأ | — | logging/metrics/traceIDs |
-| H3.1 — logging منظّم (pino) | 🟠 | ⬜ لم يبدأ | — | request logging JSON |
-| H3.2 — Correlation/Request IDs | 🟠 | ⬜ لم يبدأ | — | `x-request-id` |
-| H3.3 — Metrics (prom-client) | 🟠 | ⬜ لم يبدأ | — | `/metrics` RED |
-| H3.4 — Tracing (OpenTelemetry) | 🟠 | ⬜ لم يبدأ | — | اختياري |
+| **H3 — Observability** | 🟠 | ✅ بوابة مكتملة (3/4) | 2026-07-26 | 153 اختبارًا · H3.4 مؤجّل بقرار |
+| H3.1 — logging منظّم (pino) | 🟠 | ✅ مكتمل ومُتحقَّق | 2026-07-26 | JSON لكل طلب + حجب الأسرار |
+| H3.2 — Correlation/Request IDs | 🟠 | ✅ مكتمل ومُتحقَّق | 2026-07-26 | `x-request-id` يُحترم/يُولَّد ويُعاد |
+| H3.3 — Metrics (prom-client) | 🟠 | ✅ مكتمل ومُتحقَّق | 2026-07-26 | `/metrics` RED + cardinality مقيّدة |
+| H3.4 — Tracing (OpenTelemetry) | 🟠 | ⏸️ مؤجّل (قرارك) | — | اختياري؛ يتطلب collector + حزم OTel |
 | **H4 — الأداء** | 🟠 | ⬜ لم يبدأ | — | SQL agg/N+1/pagination |
 | H4.1 — تجميع Dashboard/Reports في SQL | 🟠 | ⬜ لم يبدأ | — | `groupBy` بدل الذاكرة |
 | H4.2 — إصلاح N+1 في تقرير المستخدمين | 🟠 | ⬜ لم يبدأ | — | استعلام مجمّع واحد |
@@ -281,6 +285,9 @@
 | 2026-07-26 | H2.1 | `rate-limit-redis` يتطلب `SCRIPT LOAD` (Lua) وهو غير مدعوم في `ioredis-mock`، ولا يوجد Redis أصلي على Windows بلا Docker ⇒ تعذّر التحقق من البند أصلًا | كتابة `RedisRateLimitStore` صغير على `ioredis` بنافذة ثابتة (`INCR`+`PTTL` داخل `MULTI`) — قابل للاختبار فعليًا وأثبت مشاركة العدّاد بين نسختين |
 | 2026-07-26 | H2.1 (tests) | كل نسخ `ioredis-mock` تتشارك مخزنًا واحدًا، فتسرّبت العدّادات بين الاختبارات (نتيجة 4 بدل 2) وأبطلت اختبار «عدم المشاركة» | `flushall()` في `beforeEach` + بادئة مفاتيح مستقلة لكل اختبار؛ واختبار «عدم المشاركة» صار يقارن بالمخزن في الذاكرة (`redis: null`) لا بنسخة mock أخرى |
 | 2026-07-26 | H2.1 (types) | `RedisRateLimitStore` فشل `tsc` بـTS2420: الحقل `prefix` كان `private` بينما واجهة `Store` تعرّفه عامًّا اختياريًا | جعل `prefix` عامًّا (`readonly`) — وهو المعنى الصحيح في الواجهة (بادئة المفاتيح لكشف العدّ المزدوج) |
+| 2026-07-26 | H3.2 (tests) | اختبار المعرّف توقّع `reqId` في جذر سطر السجل فسقط، رغم صحة التنفيذ (الترويسة كانت مضبوطة) | فحص سطر سجل حقيقي أثبت أن `pino-http` يضع المعرّف في `req.id` (المعيار) — صُحّح الاختبار لا الكود |
+| 2026-07-26 | H3.3 | استخدام سجل `prom-client` العام يسبب خطأ «مقياس مسجَّل مسبقًا» عند إنشاء أكثر من تطبيق في نفس العملية (الاختبارات) | `createMetrics()` تُنشئ `Registry` مستقلًّا لكل تطبيق، ويُحقن عبر `createApp({ metrics })` |
+| 2026-07-26 | H3.3 | تسمية المقاييس بمسار الطلب الفعلي (`/tenders/<id>`) تُفجّر الـcardinality بسلسلة زمنية لكل مناقصة | `routeLabel()` يستخدم قالب الراوتر (`/tenders/:id`) ويجمع غير المطابق تحت `__unmatched__` |
 
 ---
 

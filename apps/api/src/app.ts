@@ -1,12 +1,17 @@
+import crypto from 'node:crypto';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import cors from 'cors';
+import pinoHttp from 'pino-http';
+import type { Logger } from 'pino';
 import { pingSchema } from '@tender/shared';
 import { env } from './lib/env';
 import { prisma } from './lib/prisma';
 import { getRedisClient, type RedisClient } from './lib/redis';
 import { createLimiter } from './lib/rateLimit';
+import { logger as defaultLogger } from './lib/logger';
+import { createMetrics, routeLabel, type Metrics } from './lib/metrics';
 import { authRouter } from './routes/auth';
 import { adminUsersRouter } from './routes/adminUsers';
 import { tendersRouter } from './routes/tenders';
@@ -26,16 +31,69 @@ export function createApp(
     /** تجاوز الحد العام (للاختبارات) */
     globalLimit?: number;
     globalWindowMs?: number;
+    /** حاقن للسجلّ والمقاييس (للاختبارات) */
+    logger?: Logger;
+    metrics?: Metrics;
   } = {},
 ) {
   // افتراضيًا نعطّل تحديد المعدل في الاختبارات حتى لا يكسر عمليات الدخول المتكررة
   const rateLimitEnabled = opts.rateLimit ?? env.nodeEnv !== 'test';
   // H2.1 — عميل Redis يجعل العدّاد مشتركًا بين النسخ؛ عند غيابه مخزن في الذاكرة
   const redis = opts.redis !== undefined ? opts.redis : getRedisClient();
+  const logger = opts.logger ?? defaultLogger;
+  // H3.3 — سجل مقاييس مستقل لكل تطبيق (يمنع تضارب التسجيل بين الاختبارات)
+  const metrics = opts.metrics ?? createMetrics();
 
   const app = express();
   // H0.2 — ضبط trust proxy ليصح req.ip (rate limit) و secure cookie خلف بروكسي/LB
   app.set('trust proxy', env.trustProxyHops);
+
+  // H3.1/H3.2 — تسجيل منظّم لكل طلب + معرّف ارتباط (x-request-id) قابل للتتبّع
+  app.use(
+    pinoHttp({
+      logger,
+      // يحترم المعرّف القادم من البروكسي/العميل، وإلا يولّد واحدًا
+      genReqId: (req, res) => {
+        const incoming = req.headers['x-request-id'];
+        const id = (Array.isArray(incoming) ? incoming[0] : incoming) || crypto.randomUUID();
+        // يُعاد للعميل حتى يستطيع ربط استجابته بسجلاتنا
+        res.setHeader('x-request-id', id);
+        return id;
+      },
+      customLogLevel: (_req, res, err) => {
+        if (err || res.statusCode >= 500) return 'error';
+        if (res.statusCode >= 400) return 'warn';
+        return 'info';
+      },
+    }),
+  );
+
+  // H3.3 — قياس كل طلب (RED): عدّاد + هيستوغرام زمن الاستجابة
+  app.use((req, res, next) => {
+    const stopTimer = metrics.httpRequestDuration.startTimer();
+    res.on('finish', () => {
+      // يُحسب بعد التوجيه حتى نحصل على قالب المسار (`/tenders/:id`) لا القيمة الفعلية
+      const labels = {
+        method: req.method,
+        route: routeLabel(req),
+        status: String(res.statusCode),
+      };
+      metrics.httpRequestsTotal.inc(labels);
+      stopTimer(labels);
+    });
+    next();
+  });
+
+  // H3.3 — كشف المقاييس لـPrometheus (خارج تحديد المعدل: الكاشط يستدعيه دوريًا)
+  app.get('/metrics', async (_req, res, next) => {
+    try {
+      res.setHeader('Content-Type', metrics.registry.contentType);
+      res.send(await metrics.registry.metrics());
+    } catch (err) {
+      next(err);
+    }
+  });
+
   // M8.2 — رؤوس أمان + CORS مضبوط على أصل الواجهة مع دعم الكوكيز
   app.use(helmet());
   app.use(cors({ origin: env.webOrigin, credentials: true }));
@@ -70,8 +128,9 @@ export function createApp(
       prefix: 'rl:global:',
       redis,
     });
+    const unlimitedPaths = new Set(['/health', '/livez', '/readyz', '/metrics']);
     app.use((req, res, next) => {
-      if (req.path === '/livez' || req.path === '/readyz' || req.path === '/health') return next();
+      if (unlimitedPaths.has(req.path)) return next();
       return globalLimiter(req, res, next);
     });
 

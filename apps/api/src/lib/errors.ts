@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { ZodError, type z } from 'zod';
+import { logger } from './logger';
 
 export class AppError extends Error {
   constructor(
@@ -26,7 +27,7 @@ export function validate<S extends z.ZodTypeAny>(schema: S, data: unknown): z.ou
   return result.data;
 }
 
-export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction) {
+export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction) {
   if (err instanceof AppError) {
     return res
       .status(err.status)
@@ -37,6 +38,9 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
       error: { code: 'VALIDATION_ERROR', message: 'بيانات غير صالحة', details: err.flatten() },
     });
   }
-  console.error(err);
+  // H3.1 — سجل منظّم بدل console.error؛ `req.log` من pino-http يحمل معرّف الطلب (H3.2)
+  const log = (req as Request & { log?: { error: (obj: unknown, msg?: string) => void } }).log;
+  if (log) log.error({ err }, 'unhandled error');
+  else logger.error({ err }, 'unhandled error');
   return res.status(500).json({ error: { code: 'INTERNAL', message: 'حدث خطأ غير متوقع' } });
 }

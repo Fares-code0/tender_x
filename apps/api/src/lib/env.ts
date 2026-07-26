@@ -43,6 +43,8 @@ const envSchema = z.object({
   // H2.3 — قفل الحساب بعد محاولات دخول فاشلة متتالية
   LOGIN_MAX_FAILED_ATTEMPTS: z.coerce.number().int().positive().default(5),
   LOGIN_LOCK_MINUTES: z.coerce.number().int().positive().default(15),
+  // H3.1 — مستوى التسجيل (silent في الاختبارات حتى لا تُغرق المخرجات)
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).optional(),
 });
 
 export interface Env {
@@ -59,6 +61,7 @@ export interface Env {
   rateLimitMax: number;
   loginMaxFailedAttempts: number;
   loginLockMinutes: number;
+  logLevel: string;
 }
 
 /**
@@ -96,6 +99,7 @@ export function parseEnv(source: NodeJS.ProcessEnv = process.env): Env {
     rateLimitMax: v.RATE_LIMIT_MAX,
     loginMaxFailedAttempts: v.LOGIN_MAX_FAILED_ATTEMPTS,
     loginLockMinutes: v.LOGIN_LOCK_MINUTES,
+    logLevel: v.LOG_LEVEL ?? (v.NODE_ENV === 'test' ? 'silent' : 'info'),
   };
 }
 
