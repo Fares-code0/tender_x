@@ -141,8 +141,8 @@ export function createApp(
     app.use(
       `${API_V1}/auth/login`,
       createLimiter({
-        windowMs: 15 * 60 * 1000,
-        limit: 5,
+        windowMs: env.loginRateLimitWindowMs,
+        limit: env.loginRateLimitMax,
         prefix: 'rl:login:',
         redis,
       }),

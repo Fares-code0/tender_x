@@ -40,6 +40,10 @@ const envSchema = z.object({
   // H2.2 — الحد العام لكل IP في النافذة
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(15 * 60 * 1000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
+  // H2.2 — حد محاولات تسجيل الدخول. الافتراضي الآمن 5/15د للإنتاج والاختبار،
+  // ويُرخَّى في التطوير فقط لأن المطوّر يسجّل الدخول مرارًا فيحجب نفسه.
+  LOGIN_RATE_LIMIT_MAX: z.coerce.number().int().positive().optional(),
+  LOGIN_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(15 * 60 * 1000),
   // H2.3 — قفل الحساب بعد محاولات دخول فاشلة متتالية
   LOGIN_MAX_FAILED_ATTEMPTS: z.coerce.number().int().positive().default(5),
   LOGIN_LOCK_MINUTES: z.coerce.number().int().positive().default(15),
@@ -74,6 +78,8 @@ export interface Env {
   redisUrl?: string;
   rateLimitWindowMs: number;
   rateLimitMax: number;
+  loginRateLimitMax: number;
+  loginRateLimitWindowMs: number;
   loginMaxFailedAttempts: number;
   loginLockMinutes: number;
   logLevel: string;
@@ -119,6 +125,8 @@ export function parseEnv(source: NodeJS.ProcessEnv = process.env): Env {
     redisUrl: v.REDIS_URL,
     rateLimitWindowMs: v.RATE_LIMIT_WINDOW_MS,
     rateLimitMax: v.RATE_LIMIT_MAX,
+    loginRateLimitMax: v.LOGIN_RATE_LIMIT_MAX ?? (v.NODE_ENV === 'development' ? 50 : 5),
+    loginRateLimitWindowMs: v.LOGIN_RATE_LIMIT_WINDOW_MS,
     loginMaxFailedAttempts: v.LOGIN_MAX_FAILED_ATTEMPTS,
     loginLockMinutes: v.LOGIN_LOCK_MINUTES,
     logLevel: v.LOG_LEVEL ?? (v.NODE_ENV === 'test' ? 'silent' : 'info'),
