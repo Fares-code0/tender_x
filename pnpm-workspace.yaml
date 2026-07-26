@@ -8,6 +8,17 @@ packages:
 # (`brace_expansion_1.default is not a function`) وتنهار أدوات التغطية.
 # القرار: لا نفرضه. التبعية **تطويرية فقط** (سلسلة eslint) ولا تصل إلى الإنتاج،
 # ولذلك فحص الأمن في CI يعمل على تبعيات الإنتاج (`--prod`) وهو أخضر.
+# H7.5 — استثناء أمني مبرَّر وضيّق النطاق (GHSA-qwww-vcr4-c8h2)
+# "React Router: RSC Mode CSRF Bypass" — خطورة **عالية**، نطاقها `react-router >=7.12.0 <8.3.0`
+# والإصلاح الوحيد هو الإصدار 8.3.0 الذي يشترط React >= 19.2.7، بينما التطبيق على React 18.3.1.
+# **غير قابلة للتطبيق هنا**: الثغرة تخص وضع RSC (React Server Components) حصرًا،
+# وهذا التطبيق SPA على العميل فقط: لا حزم `@react-router/*`، ولا SSR/RSC،
+# ولا loaders/actions، ولا خادم توجيه. راجع docs/operations/security-advisories.md.
+# يُعاد النظر فور ترقية React إلى 19 (عندها ننتقل إلى react-router 8 ويُحذف هذا الاستثناء).
+auditConfig:
+  ignoreGhsas:
+    - GHSA-qwww-vcr4-c8h2
+
 allowBuilds:
   '@embedded-postgres/windows-x64': true
   '@prisma/client': true
