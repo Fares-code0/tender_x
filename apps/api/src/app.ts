@@ -2,10 +2,11 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import cors from 'cors';
-import rateLimit from 'express-rate-limit';
 import { pingSchema } from '@tender/shared';
 import { env } from './lib/env';
 import { prisma } from './lib/prisma';
+import { getRedisClient, type RedisClient } from './lib/redis';
+import { createLimiter } from './lib/rateLimit';
 import { authRouter } from './routes/auth';
 import { adminUsersRouter } from './routes/adminUsers';
 import { tendersRouter } from './routes/tenders';
@@ -18,9 +19,19 @@ import { usersRouter } from './routes/users';
 import { settingsRouter } from './routes/settings';
 import { errorHandler } from './lib/errors';
 
-export function createApp(opts: { rateLimit?: boolean } = {}) {
+export function createApp(
+  opts: {
+    rateLimit?: boolean;
+    redis?: RedisClient | null;
+    /** تجاوز الحد العام (للاختبارات) */
+    globalLimit?: number;
+    globalWindowMs?: number;
+  } = {},
+) {
   // افتراضيًا نعطّل تحديد المعدل في الاختبارات حتى لا يكسر عمليات الدخول المتكررة
   const rateLimitEnabled = opts.rateLimit ?? env.nodeEnv !== 'test';
+  // H2.1 — عميل Redis يجعل العدّاد مشتركًا بين النسخ؛ عند غيابه مخزن في الذاكرة
+  const redis = opts.redis !== undefined ? opts.redis : getRedisClient();
 
   const app = express();
   // H0.2 — ضبط trust proxy ليصح req.ip (rate limit) و secure cookie خلف بروكسي/LB
@@ -50,16 +61,28 @@ export function createApp(opts: { rateLimit?: boolean } = {}) {
     }
   });
 
-  // M8.2 — تحديد معدل محاولات تسجيل الدخول (حماية من التخمين): 5 محاولات/15 دقيقة → 429
+  // H2.2 — حد عام لكل IP على جميع المسارات (يُستثنى منه فحص الحياة/الجاهزية)
+  // H2.1 — يستخدم Redis عند توفره فيكون العدّاد مشتركًا بين كل النسخ
   if (rateLimitEnabled) {
+    const globalLimiter = createLimiter({
+      windowMs: opts.globalWindowMs ?? env.rateLimitWindowMs,
+      limit: opts.globalLimit ?? env.rateLimitMax,
+      prefix: 'rl:global:',
+      redis,
+    });
+    app.use((req, res, next) => {
+      if (req.path === '/livez' || req.path === '/readyz' || req.path === '/health') return next();
+      return globalLimiter(req, res, next);
+    });
+
+    // M8.2 — حد أضيق على تسجيل الدخول (حماية من التخمين): 5 محاولات/15 دقيقة → 429
     app.use(
       '/auth/login',
-      rateLimit({
+      createLimiter({
         windowMs: 15 * 60 * 1000,
         limit: 5,
-        standardHeaders: true,
-        legacyHeaders: false,
-        message: { error: { code: 'RATE_LIMITED', message: 'محاولات كثيرة، حاول لاحقًا' } },
+        prefix: 'rl:login:',
+        redis,
       }),
     );
   }

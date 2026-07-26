@@ -27,8 +27,47 @@ authRouter.post('/login', async (req, res, next) => {
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) throw new AppError(401, 'INVALID_CREDENTIALS', 'بيانات الدخول غير صحيحة');
     if (!user.isActive) throw new AppError(403, 'ACCOUNT_DISABLED', 'هذا الحساب معطّل');
+
+    // H2.3 — الحساب مقفول مؤقتًا بعد محاولات فاشلة متتالية
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      throw new AppError(
+        423,
+        'ACCOUNT_LOCKED',
+        'الحساب مقفول مؤقتًا بسبب محاولات دخول فاشلة، حاول لاحقًا',
+      );
+    }
+
     const ok = await bcrypt.compare(password, user.passwordHash);
-    if (!ok) throw new AppError(401, 'INVALID_CREDENTIALS', 'بيانات الدخول غير صحيحة');
+    if (!ok) {
+      // H2.3 — عدّاد المحاولات الفاشلة؛ عند بلوغ الحد يُقفل الحساب لمدة محددة
+      const attempts = user.failedLoginAttempts + 1;
+      const reachedLimit = attempts >= env.loginMaxFailedAttempts;
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          failedLoginAttempts: reachedLimit ? 0 : attempts,
+          lockedUntil: reachedLimit
+            ? new Date(Date.now() + env.loginLockMinutes * 60 * 1000)
+            : user.lockedUntil,
+        },
+      });
+      if (reachedLimit) {
+        throw new AppError(
+          423,
+          'ACCOUNT_LOCKED',
+          'الحساب مقفول مؤقتًا بسبب محاولات دخول فاشلة، حاول لاحقًا',
+        );
+      }
+      throw new AppError(401, 'INVALID_CREDENTIALS', 'بيانات الدخول غير صحيحة');
+    }
+
+    // H2.3 — نجاح الدخول يصفّر العدّاد ويرفع القفل
+    if (user.failedLoginAttempts > 0 || user.lockedUntil) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { failedLoginAttempts: 0, lockedUntil: null },
+      });
+    }
 
     // H1.3 — jti فريد لكل توكن حتى يمكن إبطاله لاحقًا عبر denylist
     const jti = crypto.randomUUID();

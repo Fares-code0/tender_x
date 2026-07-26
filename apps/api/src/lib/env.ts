@@ -35,6 +35,14 @@ const envSchema = z.object({
   // عدد قفزات البروكسي الموثوق (H0.2) — 0 يعني لا بروكسي
   TRUST_PROXY: z.coerce.number().int().min(0).default(1),
   UPLOADS_DIR: z.string().optional(),
+  // H2.1 — عند ضبطه يصبح تحديد المعدل موزّعًا عبر كل النسخ؛ بدونه مخزن في الذاكرة
+  REDIS_URL: z.string().min(1).optional(),
+  // H2.2 — الحد العام لكل IP في النافذة
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(15 * 60 * 1000),
+  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
+  // H2.3 — قفل الحساب بعد محاولات دخول فاشلة متتالية
+  LOGIN_MAX_FAILED_ATTEMPTS: z.coerce.number().int().positive().default(5),
+  LOGIN_LOCK_MINUTES: z.coerce.number().int().positive().default(15),
 });
 
 export interface Env {
@@ -46,6 +54,11 @@ export interface Env {
   webOrigin: string;
   trustProxyHops: number;
   uploadsDir?: string;
+  redisUrl?: string;
+  rateLimitWindowMs: number;
+  rateLimitMax: number;
+  loginMaxFailedAttempts: number;
+  loginLockMinutes: number;
 }
 
 /**
@@ -78,6 +91,11 @@ export function parseEnv(source: NodeJS.ProcessEnv = process.env): Env {
     webOrigin: v.WEB_ORIGIN,
     trustProxyHops: v.TRUST_PROXY,
     uploadsDir: v.UPLOADS_DIR,
+    redisUrl: v.REDIS_URL,
+    rateLimitWindowMs: v.RATE_LIMIT_WINDOW_MS,
+    rateLimitMax: v.RATE_LIMIT_MAX,
+    loginMaxFailedAttempts: v.LOGIN_MAX_FAILED_ATTEMPTS,
+    loginLockMinutes: v.LOGIN_LOCK_MINUTES,
   };
 }
 

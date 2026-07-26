@@ -4,6 +4,7 @@ import { env } from './lib/env';
 import { prisma } from './lib/prisma';
 import { runClosingReminders } from './services/closingReminder';
 import { createGracefulShutdown } from './lib/shutdown';
+import { closeRedis } from './lib/redis';
 
 const app = createApp();
 
@@ -25,6 +26,8 @@ const shutdown = createGracefulShutdown({
   server,
   prisma,
   tasks: [reminderTask],
+  // H2.1 — أغلق اتصال Redis ضمن الإيقاف الرشيق
+  closers: [closeRedis],
 });
 
 process.on('SIGTERM', () => void shutdown('SIGTERM'));

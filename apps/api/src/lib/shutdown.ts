@@ -17,6 +17,8 @@ export interface ShutdownDeps {
   tasks?: Stoppable[];
   logger?: Logger;
   exit?: (code: number) => void;
+  /** موارد إضافية تُغلق بعد فصل القاعدة (مثل Redis — H2.1) */
+  closers?: Array<() => Promise<void>>;
 }
 
 /**
@@ -40,6 +42,7 @@ export function createGracefulShutdown(deps: ShutdownDeps) {
         deps.server.close((err) => (err ? reject(err) : resolve())),
       );
       await deps.prisma.$disconnect();
+      for (const close of deps.closers ?? []) await close();
       logger.log('Shutdown complete.');
       exit(0);
     } catch (err) {
