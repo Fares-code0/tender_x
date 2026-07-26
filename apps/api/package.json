@@ -5,8 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc --noEmit",
+    "build": "tsc --noEmit && tsx scripts/build.ts",
+    "start": "node dist/index.js",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "load-test": "tsx scripts/load-test.ts",
     "db:start": "tsx scripts/dev-db.ts",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx --env-file-if-exists=.env prisma/seed.ts"
@@ -16,7 +19,7 @@
     "@aws-sdk/client-s3": "^3.1095.0",
     "@prisma/client": "^6.1.0",
     "@tender/shared": "workspace:*",
-    "bcrypt": "^5.1.1",
+    "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "express": "^4.21.2",
@@ -33,6 +36,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/autocannon": "^7.12.7",
     "@types/bcrypt": "^5.0.2",
     "@types/cookie-parser": "^1.4.8",
     "@types/cors": "^2.8.19",
@@ -45,7 +49,10 @@
     "@types/pg": "^8.20.0",
     "@types/supertest": "^6.0.2",
     "@types/swagger-ui-express": "^4.1.8",
+    "@vitest/coverage-v8": "^3.2.7",
+    "autocannon": "^8.0.0",
     "embedded-postgres": "16.14.0-beta.17",
+    "esbuild": "^0.28.1",
     "ioredis-mock": "^8.13.1",
     "pg": "^8.22.0",
     "prisma": "^6.1.0",

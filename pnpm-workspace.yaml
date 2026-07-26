@@ -1,6 +1,13 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+# H7.4 — ملاحظة أمنية موثّقة (لا override):
+# `brace-expansion` فيه ثغرة DoS (GHSA-mh99-v99m-4gvg) ونطاقها `<=5.0.7`، فالإصلاح
+# الوحيد هو 5.0.8 — لكن الإصدار 5 غيّر شكل التصدير فيكسر `minimatch@9`
+# (`brace_expansion_1.default is not a function`) وتنهار أدوات التغطية.
+# القرار: لا نفرضه. التبعية **تطويرية فقط** (سلسلة eslint) ولا تصل إلى الإنتاج،
+# ولذلك فحص الأمن في CI يعمل على تبعيات الإنتاج (`--prod`) وهو أخضر.
 allowBuilds:
   '@embedded-postgres/windows-x64': true
   '@prisma/client': true

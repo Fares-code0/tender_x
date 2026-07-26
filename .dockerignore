@@ -1,0 +1,24 @@
+# H7.1 — ما لا يدخل سياق البناء (يُسرّع البناء ويمنع تسريب أسرار إلى الصورة)
+node_modules
+**/node_modules
+dist
+**/dist
+.git
+.gitignore
+.history
+.pgdata
+**/uploads
+**/coverage
+
+# أسرار — يجب ألا تُخبز في الصورة أبدًا (تُمرَّر وقت التشغيل)
+.env
+**/.env
+**/.env.*
+!**/.env.example
+
+# أدوات وملفات محلية
+.claude
+.vscode
+*.log
+*.md
+!README.md
