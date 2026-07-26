@@ -12,7 +12,14 @@
 | Auth | JWT (httpOnly cookie) + bcrypt |
 | Validation | Zod (مشترك بين Front/Back عبر `packages/shared`) |
 | Testing | Vitest + Supertest (backend) · Vitest + Testing Library (frontend) |
-| Security | Helmet + CORS + rate-limit على تسجيل الدخول |
+| Security | Helmet + CORS + تحديد معدل موزّع (Redis) + قفل حسابات + إبطال جلسات (jti) |
+| Observability | pino (سجلات JSON) + `x-request-id` + مقاييس Prometheus على `/metrics` |
+| Storage | Amazon S3 خلف `StorageService` (أو قرص محلي للتطوير) |
+| Infra | Redis (تحديد معدل/أقفال/كاش) · Docker (متعدد المراحل) · GitHub Actions |
+
+> **الإصدار v2.0.0 — الجاهزية المؤسسية.** أُنجز طور تقوية كامل (H0–H8) يغلق 19 من 20 نتيجة تدقيق:
+> صفر ثغرات حرجة/عالية في تبعيات الإنتاج، 211 اختبارًا بتغطية 93%، واجهة منسخَنة تحت `/v1` وموثّقة على `/docs`.
+> التفاصيل: [تقرير التدقيق النهائي](docs/operations/hardening-audit-report.md).
 
 **الهيكل:** Monorepo يُدار بـpnpm — `apps/api` (الخادم) · `apps/web` (الواجهة) · `packages/shared` (مخططات Zod مشتركة).
 
@@ -89,48 +96,74 @@ pnpm dev
 
 ## خريطة الـAPI (API Map)
 
-كل المسارات تُعيد الأخطاء بشكل موحّد: `{ "error": { "code", "message" } }`. المصادقة عبر كوكي `token` (httpOnly).
+كل واجهة العمل تحت البادئة **`/v1`** (H6.3). الأخطاء بشكل موحّد:
+`{ "error": { "code", "message" } }`. المصادقة عبر كوكي `token` (httpOnly).
+
+**توثيق حيّ:** `/docs` (Swagger UI) و`/openapi.json` — مُولَّدان من مخططات Zod نفسها
+المستخدمة في التحقق، فلا ينحرفان عن السلوك. يُعطَّلان بـ`DOCS_ENABLED=false`.
+
+**مسارات البنية (بلا نسخة عمدًا):** `GET /health` · `GET /livez` · `GET /readyz` · `GET /metrics`.
 
 ### المصادقة
-- `POST /auth/login` — دخول (يضبط الكوكي) · محدود المعدل (5/15د)
-- `POST /auth/logout` — خروج (يمسح الكوكي)
-- `GET /auth/me` — المستخدم الحالي
+- `POST /v1/auth/login` — دخول (يضبط الكوكي) · محدود المعدل (5/15د)
+- `POST /v1/auth/logout` — خروج (يمسح الكوكي)
+- `GET /v1/auth/me` — المستخدم الحالي
 
 ### المستخدمون (ADMIN)
-- `GET /admin/users` · `POST /admin/users` · `PATCH /admin/users/:id`
+- `GET /v1/admin/users` · `POST /v1/admin/users` · `PATCH /v1/admin/users/:id`
 
 ### المناقصات
-- `GET /tenders` (فلاتر + pagination) · `POST /tenders` (QA)
-- `GET /tenders/:id` · `PATCH /tenders/:id` (QA/MANAGER/ADMIN)
+- `GET /v1/tenders` (فلاتر + pagination) · `POST /v1/tenders` (QA)
+- `GET /v1/tenders/:id` · `PATCH /v1/tenders/:id` (QA/MANAGER/ADMIN)
 
 ### المراجعة والـChecklist
-- `POST /tenders/:id/review/start` (QA: NEW→UNDER_REVIEW)
-- `GET` / `PUT /tenders/:id/checklist`
-- `POST /tenders/:id/review/decision` (approve/reject)
-- `GET` / `POST` / `PATCH /checklist-templates` (ADMIN/MANAGER)
+- `POST /v1/tenders/:id/review/start` (QA: NEW→UNDER_REVIEW)
+- `GET` / `PUT /v1/tenders/:id/checklist`
+- `POST /v1/tenders/:id/review/decision` (approve/reject)
+- `GET` / `POST` / `PATCH /v1/checklist-templates` (ADMIN/MANAGER)
 
 ### سير العمل (Workflow)
-- `POST /tenders/:id/assign` (QA → WRITER)
-- `POST /tenders/:id/submit-for-approval` (WRITER المعيّن)
-- `POST /tenders/:id/manager-decision` (approve/return/stop)
-- `POST /tenders/:id/mark-submitted` · `POST /tenders/:id/result` (WON/LOST)
+- `POST /v1/tenders/:id/assign` (QA → WRITER)
+- `POST /v1/tenders/:id/submit-for-approval` (WRITER المعيّن)
+- `POST /v1/tenders/:id/manager-decision` (approve/return/stop)
+- `POST /v1/tenders/:id/mark-submitted` · `POST /v1/tenders/:id/result` (WON/LOST)
 
 ### المرفقات
-- `POST /tenders/:id/attachments` (WRITER, multipart) · `GET /tenders/:id/attachments`
-- `GET /attachments/:id/download`
+- `POST /v1/tenders/:id/attachments` (WRITER, multipart) · `GET /v1/tenders/:id/attachments`
+- `GET /v1/attachments/:id/download`
 
 ### الإشعارات
-- `GET /notifications` (+ عدّاد غير المقروء) · `POST /notifications/:id/read`
+- `GET /v1/notifications` (+ عدّاد غير المقروء) · `POST /v1/notifications/:id/read`
 
 ### لوحات المعلومات والتقارير
-- `GET /dashboard` (محتوى حسب الدور)
-- `GET /reports/summary?from&to&userId` (MANAGER/OWNER/ADMIN)
+- `GET /v1/dashboard` (محتوى حسب الدور)
+- `GET /v1/reports/summary?from&to&userId` (MANAGER/OWNER/ADMIN)
 
 ### سجل العمليات
-- `GET /tenders/:id/audit` (MANAGER/OWNER/ADMIN — قراءة فقط)
+- `GET /v1/tenders/:id/audit` (MANAGER/OWNER/ADMIN — قراءة فقط)
 
 ---
 
 ## التوثيق التصميمي
 
 حزمة توثيق UX/Design (قواعد العمل، الأدوار والصلاحيات، رحلات المستخدمين، جرد الشاشات) مُدارة في مستودع الوثائق `Fares-code0/tender_x` تحت `docs/design/`.
+
+---
+
+## التشغيل والعمليات (Operations)
+
+| المستند | المحتوى |
+| --- | --- |
+| [تقرير التدقيق النهائي](docs/operations/hardening-audit-report.md) | حالة نتائج التدقيق الـ20، الدرجات قبل/بعد، نتائج الحمل والأمن |
+| [إدارة الأسرار](docs/operations/secrets.md) | مصدر كل سرّ في كل بيئة، التدوير، التعامل مع تسريب |
+| [الثغرات المعروفة](docs/operations/security-advisories.md) | الثغرات المفتوحة وتقييم قابلية استغلالها |
+
+```bash
+# بناء وتشغيل إنتاجي
+pnpm --filter @tender/api build && pnpm --filter @tender/api start
+
+# البوابة الكاملة
+pnpm lint && pnpm test && pnpm build
+pnpm --filter @tender/api test:coverage    # عتبات تغطية حاجبة
+pnpm audit --prod --audit-level high       # فحص أمني لتبعيات الإنتاج
+```
