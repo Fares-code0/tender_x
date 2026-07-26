@@ -3,6 +3,7 @@ import bcrypt from 'bcrypt';
 import { createUserSchema, updateUserSchema } from '@tender/shared';
 import { prisma } from '../lib/prisma';
 import { AppError, validate } from '../lib/errors';
+import { referencePaginationSchema, toSkipTake } from '../lib/pagination';
 import { logAudit } from '../lib/audit';
 import { requireAuth, requireRole } from '../middleware/auth';
 
@@ -12,10 +13,15 @@ adminUsersRouter.use(requireAuth, requireRole('ADMIN'));
 
 const publicUser = { id: true, name: true, email: true, role: true, isActive: true, createdAt: true } as const;
 
-adminUsersRouter.get('/', async (_req, res, next) => {
+adminUsersRouter.get('/', async (req, res, next) => {
   try {
-    const users = await prisma.user.findMany({ select: publicUser, orderBy: { createdAt: 'asc' } });
-    res.json({ users });
+    // H4.3 — قائمة مرقّمة بحد أقصى، لا تحميل كل المستخدمين دفعةً واحدة
+    const p = validate(referencePaginationSchema, req.query);
+    const [total, users] = await Promise.all([
+      prisma.user.count(),
+      prisma.user.findMany({ select: publicUser, orderBy: { createdAt: 'asc' }, ...toSkipTake(p) }),
+    ]);
+    res.json({ users, total, page: p.page, pageSize: p.pageSize });
   } catch (err) {
     next(err);
   }

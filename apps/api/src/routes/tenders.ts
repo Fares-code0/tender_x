@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
+import fs from 'node:fs/promises';
 import { Router } from 'express';
 import type { Prisma } from '@prisma/client';
 import {
@@ -15,6 +16,7 @@ import {
 } from '@tender/shared';
 import { prisma } from '../lib/prisma';
 import { AppError, validate } from '../lib/errors';
+import { paginationSchema, toSkipTake } from '../lib/pagination';
 import { logAudit } from '../lib/audit';
 import { recordStatusChange } from '../lib/statusChange';
 import { resolveTransition } from '../services/tenderWorkflow';
@@ -637,7 +639,8 @@ tendersRouter.post('/:id/attachments', requireRole('WRITER'), (req, res, next) =
       const prior = await prisma.attachment.count({ where: { tenderId: tender.id, fileName } });
       const version = prior + 1;
       const key = `${tender.id}/${crypto.randomUUID()}${path.extname(fileName)}`;
-      await storage.save(key, req.file.buffer);
+      // H4.5 — الملف وصل متدفّقًا إلى مسار مؤقّت؛ ننقله بلا تحميله في الذاكرة
+      await storage.saveFromFile(key, req.file.path);
 
       const attachment = await prisma.$transaction(async (tx) => {
         const created = await tx.attachment.create({
@@ -664,6 +667,8 @@ tendersRouter.post('/:id/attachments', requireRole('WRITER'), (req, res, next) =
 
       res.status(201).json({ attachment });
     } catch (e) {
+      // H4.5 — لا نترك ملفًا مؤقّتًا معلّقًا عند فشل التحقق/الحفظ
+      if (req.file?.path) await fs.rm(req.file.path, { force: true }).catch(() => {});
       next(e);
     }
   });
@@ -680,12 +685,18 @@ tendersRouter.get(
         select: { id: true },
       });
       if (!tender) throw new AppError(404, 'NOT_FOUND', 'المناقصة غير موجودة');
-      const entries = await prisma.auditLog.findMany({
-        where: { tenderId: tender.id },
-        orderBy: { createdAt: 'desc' },
-        include: { user: { select: { id: true, name: true, role: true } } },
-      });
-      res.json({ entries });
+      // H4.3 — سجل التدقيق ينمو بلا حد: يُرقَّم ولا يُحمَّل كاملًا
+      const p = validate(paginationSchema, req.query);
+      const [total, entries] = await Promise.all([
+        prisma.auditLog.count({ where: { tenderId: tender.id } }),
+        prisma.auditLog.findMany({
+          where: { tenderId: tender.id },
+          orderBy: { createdAt: 'desc' },
+          include: { user: { select: { id: true, name: true, role: true } } },
+          ...toSkipTake(p),
+        }),
+      ]);
+      res.json({ entries, total, page: p.page, pageSize: p.pageSize });
     } catch (err) {
       next(err);
     }

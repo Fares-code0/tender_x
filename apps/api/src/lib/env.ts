@@ -45,6 +45,9 @@ const envSchema = z.object({
   LOGIN_LOCK_MINUTES: z.coerce.number().int().positive().default(15),
   // H3.1 — مستوى التسجيل (silent في الاختبارات حتى لا تُغرق المخرجات)
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).optional(),
+  // H4.4 — تجمّع اتصالات Prisma (يُضاف إلى DATABASE_URL). خلف PgBouncer اضبط 1.
+  DB_CONNECTION_LIMIT: z.coerce.number().int().positive().optional(),
+  DB_POOL_TIMEOUT: z.coerce.number().int().nonnegative().optional(),
 });
 
 export interface Env {
@@ -62,6 +65,8 @@ export interface Env {
   loginMaxFailedAttempts: number;
   loginLockMinutes: number;
   logLevel: string;
+  dbConnectionLimit?: number;
+  dbPoolTimeout?: number;
 }
 
 /**
@@ -100,6 +105,8 @@ export function parseEnv(source: NodeJS.ProcessEnv = process.env): Env {
     loginMaxFailedAttempts: v.LOGIN_MAX_FAILED_ATTEMPTS,
     loginLockMinutes: v.LOGIN_LOCK_MINUTES,
     logLevel: v.LOG_LEVEL ?? (v.NODE_ENV === 'test' ? 'silent' : 'info'),
+    dbConnectionLimit: v.DB_CONNECTION_LIMIT,
+    dbPoolTimeout: v.DB_POOL_TIMEOUT,
   };
 }
 

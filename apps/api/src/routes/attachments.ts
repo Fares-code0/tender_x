@@ -1,3 +1,8 @@
+import crypto from 'node:crypto';
+import os from 'node:os';
+import path from 'node:path';
+import fsSync from 'node:fs';
+import { pipeline } from 'node:stream/promises';
 import { Router } from 'express';
 import multer from 'multer';
 import type { Role } from '@prisma/client';
@@ -12,9 +17,19 @@ import { AppError } from '../lib/errors';
 import { storage } from '../services/storage';
 import { requireAuth } from '../middleware/auth';
 
-/** إعداد multer: تخزين في الذاكرة + حد الحجم + فلتر الأنواع المسموحة (M5.1) */
+/**
+ * إعداد multer: حد الحجم + فلتر الأنواع المسموحة (M5.1).
+ * H4.5 — تخزين على القرص (تدفّق) بدل الذاكرة: رفع 20MB لم يعد يحجز 20MB في الـheap
+ * لكل طلب متزامن. الملف المؤقّت يُنقل إلى التخزين النهائي بعد نجاح التحقق.
+ */
+const tmpUploadDir = path.join(os.tmpdir(), 'tender-uploads');
+fsSync.mkdirSync(tmpUploadDir, { recursive: true });
+
 export const upload = multer({
-  storage: multer.memoryStorage(),
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, tmpUploadDir),
+    filename: (_req, _file, cb) => cb(null, crypto.randomUUID()),
+  }),
   limits: { fileSize: MAX_ATTACHMENT_BYTES },
   fileFilter: (_req, file, cb) => {
     if (!isAllowedAttachment(file.originalname)) {
@@ -70,20 +85,25 @@ attachmentsRouter.get('/:id/download', async (req, res, next) => {
       throw new AppError(403, 'FORBIDDEN', 'ليست لديك صلاحية لتنزيل هذا المرفق');
     }
 
-    let data: Buffer;
-    try {
-      data = await storage.read(attachment.storagePath);
-    } catch {
-      throw new AppError(404, 'FILE_MISSING', 'ملف المرفق غير موجود في التخزين');
-    }
-
     res.setHeader('Content-Type', attachment.mimeType || 'application/octet-stream');
     res.setHeader(
       'Content-Disposition',
       `attachment; filename*=UTF-8''${encodeURIComponent(attachment.fileName)}`,
     );
     res.setHeader('Content-Length', String(attachment.size));
-    res.send(data);
+
+    // H4.5 — بثّ الملف بدل قراءته كاملًا في الذاكرة
+    const stream = storage.createReadStream(attachment.storagePath);
+    stream.on('error', () => {
+      if (!res.headersSent) {
+        next(new AppError(404, 'FILE_MISSING', 'ملف المرفق غير موجود في التخزين'));
+      } else {
+        res.destroy();
+      }
+    });
+    await pipeline(stream, res).catch(() => {
+      // العميل قطع الاتصال أو فشل البثّ — سُجّل عبر معالج الخطأ أعلاه
+    });
   } catch (err) {
     next(err);
   }
