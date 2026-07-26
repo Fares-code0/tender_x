@@ -1,6 +1,7 @@
 {
   "name": "tender-system",
   "private": true,
+  "packageManager": "pnpm@11.15.1",
   "type": "module",
   "version": "0.1.0",
   "description": "نظام إدارة واكتشاف المناقصات الذكي — Brains Valley",
