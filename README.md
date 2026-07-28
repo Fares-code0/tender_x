@@ -105,7 +105,7 @@ pnpm dev
 **مسارات البنية (بلا نسخة عمدًا):** `GET /health` · `GET /livez` · `GET /readyz` · `GET /metrics`.
 
 ### المصادقة
-- `POST /v1/auth/login` — دخول (يضبط الكوكي) · محدود المعدل (5/15د)
+- `POST /v1/auth/login` — دخول (يضبط الكوكي) · محدود المعدل: **5 محاولات/15د** في الإنتاج، و50 في التطوير فقط — يُضبط بـ`LOGIN_RATE_LIMIT_MAX` و`LOGIN_RATE_LIMIT_WINDOW_MS` (**لا ترفعه في الإنتاج**)
 - `POST /v1/auth/logout` — خروج (يمسح الكوكي)
 - `GET /v1/auth/me` — المستخدم الحالي
 
