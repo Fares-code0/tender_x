@@ -106,10 +106,15 @@ else
   bad "العملية 1 = node dist/index.js" "المُستلَم: $pid1"
 fi
 
-if in_api node -e "require.resolve('.prisma/client/default')" >/dev/null 2>&1; then
-  ok "عميل Prisma مولَّد داخل الصورة"
+# نُنشئ العميل فعلًا بدل فحص مسار داخلي: هذا هو العطل المقصود حرفيًا
+# («did not initialize yet» عند ضياع المولَّد في `pnpm deploy`)، ولا يتعلّق
+# بأسماء ملفات Prisma الداخلية التي تتغيّر بين الإصدارات.
+if in_api node --input-type=commonjs -e \
+  "const { PrismaClient } = require('@prisma/client'); new PrismaClient();" >/dev/null 2>&1; then
+  ok "عميل Prisma مولَّد ويُنشَأ داخل الصورة"
 else
-  bad "عميل Prisma مولَّد داخل الصورة" "لم يُحلّ .prisma/client — راجع خطوة generate بعد pnpm deploy"
+  bad "عميل Prisma مولَّد ويُنشَأ داخل الصورة" \
+    "$(in_api node --input-type=commonjs -e "const { PrismaClient } = require('@prisma/client'); new PrismaClient();" | head -3)"
 fi
 
 if in_api sh -c 'touch /app/uploads/.smoke && rm /app/uploads/.smoke' >/dev/null 2>&1; then
