@@ -39,7 +39,9 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/tender_dev
-    command: pnpm --filter @tender/api exec prisma migrate deploy
+    # مباشرةً لا عبر `pnpm exec` — لنفس سبب خطوة generate في الـDockerfile:
+    # فحص pnpm 11 لتطابق node_modules يحاول تثبيتًا ثم يسقط بلا TTY.
+    command: /app/apps/api/node_modules/.bin/prisma migrate deploy --schema /app/apps/api/prisma/schema.prisma
     restart: 'no'
 
   api:

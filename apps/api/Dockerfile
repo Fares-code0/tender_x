@@ -12,6 +12,15 @@ FROM node:22-bookworm-slim AS deps
 WORKDIR /app
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
+
+# OpenSSL مطلوب **هنا أيضًا** لا في صورة التشغيل وحدها: Prisma يستنتج إصدار
+# libssl وقت التثبيت والتوليد ليختار المحرّك المطابق. بدونه يحذّر
+# «failed to detect the libssl/openssl version» ويرجع إلى `openssl-1.1.x`،
+# فيُولَّد محرّك لا يعمل في صورة التشغيل (bookworm عليه openssl 3).
+RUN apt-get update \
+  && apt-get install --no-install-recommends -y openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
 RUN corepack enable
 
 # ملفات المانيفست أولًا: تتغيّر نادرًا فتبقى طبقة الـcache صالحة
@@ -41,7 +50,11 @@ RUN pnpm --filter @tender/api --prod deploy --legacy /app/deploy
 # «@prisma/client did not initialize yet». نمرّر مخططًا داخل `deploy` ليَحلّ
 # مسار `@prisma/client` إلى `/app/deploy/node_modules` فيولَّد العميل بجواره.
 COPY apps/api/prisma /app/deploy/prisma
-RUN pnpm --filter @tender/api exec prisma generate --schema /app/deploy/prisma/schema.prisma
+# تُستدعى أداة prisma مباشرةً لا عبر `pnpm exec`: pnpm 11 يتحقق من تطابق
+# node_modules قبل كل تنفيذ، فيرى `deploy` تغييرًا ويحاول `pnpm install
+# --production` ثم يسقط بـERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY —
+# وحتى لو نجح لأفسد node_modules الخاص بمرحلة البناء.
+RUN /app/apps/api/node_modules/.bin/prisma generate --schema /app/deploy/prisma/schema.prisma
 
 # ---------- 3) التشغيل ----------
 FROM node:22-bookworm-slim AS runtime
