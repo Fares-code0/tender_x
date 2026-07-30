@@ -1,3 +1,9 @@
+# H7.1 — تشغيل المنظومة كاملة محليًا: قاعدة + هجرات + واجهة API.
+#
+#   JWT_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))") \
+#     docker compose up --build -d
+#
+# ثم اختبار الدخان: bash scripts/docker-smoke-test.sh
 services:
   db:
     image: postgres:16
@@ -8,9 +14,64 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: tender_dev
     ports:
-      - "5432:5432"
+      - '5432:5432'
     volumes:
       - tender_pgdata:/var/lib/postgresql/data
+    # الفحص شرطٌ لإقلاع الهجرات: postgres يقبل الاتصالات بعد ثوانٍ من بدء الحاوية
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d tender_dev']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # الهجرات كخطوة نشر منفصلة تعمل **مرة واحدة**، لا عند إقلاع كل نسخة:
+  # نسخ متوازية تتسابق على نفس الهجرة. تُبنى من مرحلة `build` لأن أداة prisma
+  # تطويرية فلا وجود لها في صورة التشغيل.
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: build
+    container_name: tender_migrate
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/tender_dev
+    # مباشرةً لا عبر `pnpm exec` — لنفس سبب خطوة generate في الـDockerfile:
+    # فحص pnpm 11 لتطابق node_modules يحاول تثبيتًا ثم يسقط بلا TTY.
+    command: /app/apps/api/node_modules/.bin/prisma migrate deploy --schema /app/apps/api/prisma/schema.prisma
+    restart: 'no'
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: tender-api
+    container_name: tender_api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/tender_dev
+      # H7.3 — لا سرّ مخبوز في الملف ولا قيمة افتراضية: الإقلاع يفشل برسالة
+      # واضحة إن لم يُمرَّر السرّ من البيئة.
+      JWT_SECRET: ${JWT_SECRET:?required — export JWT_SECRET before running docker compose}
+      NODE_ENV: production
+      PORT: 4000
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:5173}
+      # لا بروكسي أمام الحاوية في هذا التشغيل المحلي (H0.2)
+      TRUST_PROXY: 0
+    ports:
+      - '4000:4000'
+    volumes:
+      # المرفقات خارج طبقة الحاوية حتى تبقى بعد إعادة البناء
+      - tender_uploads:/app/uploads
 
 volumes:
   tender_pgdata:
+  tender_uploads:
