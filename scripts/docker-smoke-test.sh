@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
-# H7.1 — اختبار دخان لصورة الـAPI بعد `docker compose up --build -d`.
+# H7.1 · D1 — اختبار دخان للمنظومة بعد `docker compose up --build -d`.
 #
 # «الصورة بُنيت» ليست دليلًا على شيء: الفشل المعتاد يقع بعد الإقلاع
 # (عميل Prisma غير مولَّد، محرّك بلا OpenSSL، مجلد رفع بلا صلاحية كتابة).
 # لذلك تُنفَّذ الفحوص **داخل الحاوية** — لا من المضيف وحده.
+#
+# ومنذ D1 يضيف القسمان 5 و6 ما لا تكشفه فحوص الصحة إطلاقًا: الأصل الواحد،
+# وحذف بادئة `/api`، وارتداد SPA، ودورة تسجيل دخول كاملة تثبت أن كوكي
+# `sameSite=strict` تعمل فعلًا عبر البروكسي.
 #
 #   JWT_SECRET=... docker compose up --build -d
 #   bash scripts/docker-smoke-test.sh
@@ -14,7 +18,14 @@ cd "$(dirname "$0")/.."
 PASS=0
 FAIL=0
 API=${API_SERVICE:-api}
-HOST_URL=${HOST_URL:-http://localhost:4000}
+# D1 — الأصل الواحد: كل شيء عبر البروكسي، لا منفذ الـAPI مباشرةً
+SITE_URL=${SITE_URL:-https://localhost}
+COOKIE_JAR=$(mktemp)
+trap 'rm -f "$COOKIE_JAR"' EXIT
+
+# `-k` لأن الشهادة محلية موقّعة ذاتيًا (`tls internal`). صلاحية الشهادة
+# ليست موضوع هذا الفحص بل سلوك التطبيق؛ الشهادة الحقيقية تُتحقَّق في D2.
+CURL=(curl -sk --max-time 15)
 
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$1"; PASS=$((PASS + 1)); }
 bad()  { printf '  \033[31m✗\033[0m %s\n'   "$1"; printf '      %s\n' "${2:-}"; FAIL=$((FAIL + 1)); }
@@ -61,6 +72,14 @@ if [ "${migrate_exit:-1}" = "0" ]; then
   ok "خدمة migrate انتهت بنجاح (الهجرات مطبَّقة)"
 else
   bad "خدمة migrate انتهت بنجاح" "رمز الخروج: ${migrate_exit:-غير موجودة}"
+fi
+
+# D1 — البيانات التجريبية شرط لفحص دورة تسجيل الدخول
+seed_exit=$(docker compose ps -a --format '{{.Service}} {{.ExitCode}}' | awk '$1=="seed"{print $2}')
+if [ "${seed_exit:-1}" = "0" ]; then
+  ok "خدمة seed انتهت بنجاح (مستخدمو الاختبار موجودون)"
+else
+  bad "خدمة seed انتهت بنجاح" "رمز الخروج: ${seed_exit:-غير موجودة}"
 fi
 
 head_ "1) الانتظار حتى تصبح الحاوية سليمة (HEALTHCHECK)"
@@ -129,15 +148,82 @@ else
   bad "الصورة نظيفة من أدوات التطوير والأسرار" "وُجد tsx أو .env في /app"
 fi
 
-head_ "5) وصول المضيف عبر المنفذ المنشور"
-host_status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$HOST_URL/livez" || echo 000)
-if [ "$host_status" = "200" ]; then
-  ok "$HOST_URL/livez ⇒ 200"
+head_ "5) الأصل الواحد عبر البروكسي (D1)"
+
+# انتظار البروكسي: إصدار الشهادة المحلية يستغرق لحظات بعد الإقلاع
+deadline=$((SECONDS + 90))
+until "${CURL[@]}" -o /dev/null "$SITE_URL/" 2>/dev/null || [ $SECONDS -ge $deadline ]; do sleep 3; done
+
+idx=$("${CURL[@]}" -w '\n%{http_code}' "$SITE_URL/" || printf '\n000')
+if [ "$(tail -n1 <<<"$idx")" = "200" ] && grep -qi 'id="root"' <<<"$idx"; then
+  ok "$SITE_URL/ ⇒ 200 وصفحة التطبيق"
 else
-  bad "$HOST_URL/livez ⇒ 200" "المُستلَم: $host_status"
+  bad "$SITE_URL/ يخدم الواجهة" "الحالة: $(tail -n1 <<<"$idx")"
 fi
 
-head_ "6) السجلات"
+# ارتداد SPA: التوجيه في المتصفح، فمسار عميق لا ملف له ⇒ يجب أن يعيد index.html
+deep=$("${CURL[@]}" -o /dev/null -w '%{http_code}' "$SITE_URL/tenders/999")
+if [ "$deep" = "200" ]; then
+  ok "مسار عميق /tenders/999 ⇒ 200 (ارتداد SPA يعمل)"
+else
+  bad "ارتداد SPA على مسار عميق" "المُستلَم: $deep — تحديث الصفحة سيعطي 404"
+fi
+
+# حذف البادئة: /api/livez ⇒ /livez على الـAPI. لو بقيت البادئة ⇒ 404.
+prox=$("${CURL[@]}" -w '\n%{http_code}' "$SITE_URL/api/livez")
+if [ "$(tail -n1 <<<"$prox")" = "200" ] && grep -q '"status":"live"' <<<"$prox"; then
+  ok "/api/livez ⇒ 200 عبر البروكسي (حذف البادئة يعمل)"
+else
+  bad "/api/livez عبر البروكسي" "المُستلَم: $prox"
+fi
+
+head_ "6) دورة تسجيل دخول كاملة — جوهر D1"
+# لا يمرّ هذا الفحص إلا إذا صحّ **الثلاثة معًا**: الأصل الواحد، وحذف
+# البادئة، وسلوك الكوكي (httpOnly + sameSite=strict + secure في الإنتاج).
+# فحص صحة يردّ 200 لا يثبت أيًّا منها.
+
+anon=$("${CURL[@]}" -o /dev/null -w '%{http_code}' "$SITE_URL/api/v1/tenders")
+if [ "$anon" = "401" ]; then
+  ok "/api/v1/tenders بلا جلسة ⇒ 401"
+else
+  bad "/api/v1/tenders بلا جلسة ⇒ 401" "المُستلَم: $anon"
+fi
+
+login=$("${CURL[@]}" -c "$COOKIE_JAR" -w '\n%{http_code}' \
+  -X POST "$SITE_URL/api/v1/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@test.com","password":"Test1234!"}')
+if [ "$(tail -n1 <<<"$login")" = "200" ]; then
+  ok "تسجيل الدخول عبر البروكسي ⇒ 200"
+else
+  bad "تسجيل الدخول عبر البروكسي ⇒ 200" "المُستلَم: $login"
+fi
+
+# httpOnly تمنع سرقة الكوكي بـXSS، وSecure تمنع إرسالها على HTTP.
+# غيابهما تراجعٌ صامت عن H1.2. العمود الرابع في ملف الكوكي هو علم Secure.
+if grep -q '#HttpOnly_' "$COOKIE_JAR" && awk '$0 !~ /^#/ && $4=="TRUE" && $6=="token"' "$COOKIE_JAR" | grep -q .; then
+  ok "كوكي الجلسة httpOnly و Secure"
+else
+  bad "كوكي الجلسة httpOnly و Secure" "$(grep -v '^$' "$COOKIE_JAR" | tail -3)"
+fi
+
+authed=$("${CURL[@]}" -b "$COOKIE_JAR" -o /dev/null -w '%{http_code}' "$SITE_URL/api/v1/tenders")
+if [ "$authed" = "200" ]; then
+  ok "/api/v1/tenders بالجلسة ⇒ 200 (المصادقة تعمل عبر الأصل الواحد)"
+else
+  bad "/api/v1/tenders بالجلسة ⇒ 200" "المُستلَم: $authed"
+fi
+
+# أي منفذ مكشوف للـAPI يخلق أصلًا ثانيًا يلتفّ على البروكسي فيُخفي أعطال
+# المسارات والكوكي بدل أن يكشفها
+direct=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://localhost:4000/livez || echo 000)
+if [ "$direct" = "000" ]; then
+  ok "منفذ الـAPI غير مكشوف على المضيف (أصل واحد فعلًا)"
+else
+  bad "منفذ الـAPI غير مكشوف" "استجاب بـ$direct — هناك أصل ثانٍ"
+fi
+
+head_ "7) السجلات"
 logs=$(docker compose logs --no-color "$API" 2>&1)
 if grep -q '"msg":"API listening"' <<<"$logs"; then
   ok "سجل الإقلاع «API listening» موجود"

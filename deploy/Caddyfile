@@ -1,0 +1,50 @@
+# D1 — أصل واحد: الواجهة والـAPI خلف نفس المضيف والمنفذ.
+#
+# ليس تفضيلًا تشغيليًا بل شرط معماري: `apps/web/src/api/client.ts` يعرّف
+# `API_BASE = '/api/v1'` (مسار نسبي)، وكوكي الجلسة على `sameSite=strict`.
+# فالنشر على أصلين لا يعطي خطأً واضحًا بل **يُسقط المصادقة بصمت**.
+
+{
+	# منافذ غير محجوزة ليعمل Caddy بمستخدم غير جذر بلا CAP_NET_BIND_SERVICE.
+	# التوجيه من 80/443 يجري في compose.
+	http_port 8080
+	https_port 8443
+
+	# سجلّ منظَّم كسجلات الـAPI (pino) — شرط أي تجميع سجلات مركزي
+	log {
+		format json
+	}
+}
+
+# العنوان من البيئة: `localhost` محليًا وفي CI، والنطاق الحقيقي في D2.
+{$SITE_ADDRESS:localhost} {
+	# شهادة محلية موقّعة ذاتيًا. **في D2 يُحذف هذا السطر** فيتولّى Caddy
+	# إصدار شهادة Let's Encrypt وتجديدها تلقائيًا للنطاق الحقيقي.
+	tls internal
+
+	encode gzip
+
+	# ---------- الـAPI ----------
+	# البادئة `/api` تُحذف قبل التمرير، تمامًا كما يفعل بروكسي Vite في
+	# التطوير (`apps/web/vite.config.ts`). بدون الحذف يصل المسار
+	# `/api/v1/tenders` إلى الـAPI فيردّ 404 على كل نداء.
+	handle /api/* {
+		uri strip_prefix /api
+		reverse_proxy api:4000 {
+			# الـAPI على `trust proxy` (H0.2) فيقرأ هذه ليصح `req.ip`
+			# في تحديد المعدل، و`secure` في الكوكي.
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Forwarded-For {remote_host}
+		}
+	}
+
+	# ---------- الواجهة ----------
+	handle {
+		root * /srv
+
+		# ارتداد SPA: التوجيه في المتصفح لا على الخادم، فتحديث الصفحة على
+		# `/tenders/5` يطلب مسارًا لا ملف له. بدون هذا ⇒ 404 عند كل تحديث.
+		try_files {path} /index.html
+		file_server
+	}
+}

@@ -33,6 +33,7 @@ jobs:
     timeout-minutes: 30
     outputs:
       image: ${{ steps.meta.outputs.image }}
+      web_image: ${{ steps.meta.outputs.web_image }}
       version: ${{ steps.meta.outputs.version }}
 
     steps:
@@ -41,14 +42,15 @@ jobs:
           ref: ${{ inputs.tag || github.ref }}
 
       # أسماء صور GHCR يجب أن تكون بأحرف صغيرة، واسم المالك ليس كذلك بالضرورة
-      - name: Resolve image name and version
+      - name: Resolve image names and version
         id: meta
         run: |
           owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           version="${{ inputs.tag || github.ref_name }}"
           echo "image=ghcr.io/${owner}/tender-api" >> "$GITHUB_OUTPUT"
+          echo "web_image=ghcr.io/${owner}/tender-web" >> "$GITHUB_OUTPUT"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "نشر ${version} إلى ghcr.io/${owner}/tender-api"
+          echo "نشر ${version} إلى ghcr.io/${owner}/tender-{api,web}"
 
       # H7.3 — سرّ عابر يُولَّد داخل التشغيل: الصورة ترفض الأسرار الضعيفة (H0.1)
       - name: Generate a throwaway JWT secret
@@ -80,19 +82,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # الصورة المدفوعة هي **نفسها** التي اجتازت الدخان أعلاه، لا إعادة بناء
+      # الصور المدفوعة هي **نفسها** التي اجتازت الدخان أعلاه، لا إعادة بناء
       - name: Tag and push
         run: |
           set -euo pipefail
-          image="${{ steps.meta.outputs.image }}"
           version="${{ steps.meta.outputs.version }}"
           sha_tag="sha-$(git rev-parse --short HEAD)"
           # لا وسم `latest`: خادم إنتاج يسحب `latest` لا يعرف ما الذي يعمل عليه
-          docker tag tender-api "${image}:${version}"
-          docker tag tender-api "${image}:${sha_tag}"
-          docker push "${image}:${version}"
-          docker push "${image}:${sha_tag}"
-          echo "تم دفع ${image}:${version} و ${image}:${sha_tag}"
+          for pair in "tender-api ${{ steps.meta.outputs.image }}" "tender-web ${{ steps.meta.outputs.web_image }}"; do
+            set -- $pair
+            local_image=$1; remote=$2
+            docker tag "$local_image" "${remote}:${version}"
+            docker tag "$local_image" "${remote}:${sha_tag}"
+            docker push "${remote}:${version}"
+            docker push "${remote}:${sha_tag}"
+            echo "تم دفع ${remote}:${version} و ${remote}:${sha_tag}"
+          done
 
   # D0.1 (Verify) — «على جهاز نظيف»: runner جديد لا يملك الصورة محليًا،
   # ولا يبني شيئًا، ولا يرى سياق البناء. يسحب المنشور ويشغّله فقط.
@@ -125,14 +130,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Pull the published image
-        run: docker pull "${{ needs.publish.outputs.image }}:${{ needs.publish.outputs.version }}"
-
-      - name: Report image size and digest
+      - name: Pull the published images
         run: |
-          ref="${{ needs.publish.outputs.image }}:${{ needs.publish.outputs.version }}"
-          docker image ls "$ref" --format '{{.Repository}}:{{.Tag}} {{.Size}}'
-          docker image inspect "$ref" --format 'digest: {{index .RepoDigests 0}}'
+          set -euo pipefail
+          docker pull "${{ needs.publish.outputs.image }}:${{ needs.publish.outputs.version }}"
+          docker pull "${{ needs.publish.outputs.web_image }}:${{ needs.publish.outputs.version }}"
+
+      - name: Report image sizes and digests
+        run: |
+          set -euo pipefail
+          for ref in \
+            "${{ needs.publish.outputs.image }}:${{ needs.publish.outputs.version }}" \
+            "${{ needs.publish.outputs.web_image }}:${{ needs.publish.outputs.version }}"; do
+            docker image ls "$ref" --format '{{.Repository}}:{{.Tag}} {{.Size}}'
+            docker image inspect "$ref" --format 'digest: {{index .RepoDigests 0}}'
+          done
 
       # `--network host` ليصل من الحاوية إلى postgres الخدمة على مضيف الـrunner
       - name: Run the pulled image
