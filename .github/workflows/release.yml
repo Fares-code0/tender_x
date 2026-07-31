@@ -1,0 +1,182 @@
+# D0 — نشر صورة الـAPI إلى GHCR.
+#
+# الترتيب مقصود: بناء ⇒ **اختبار دخان** ⇒ دفع. صورة لا تجتاز الدخان لا تصل
+# السجلّ إطلاقًا (D0.2)، فلا يمكن أن يوجد على GHCR إصدار لم يُثبَت إقلاعه.
+#
+# ثم وظيفة ثانية **تسحب المنشور على runner نظيف وتشغّله** — لأن «الصورة
+# بُنيت ودُفعت» لا يثبت أن ما وصل السجلّ يعمل.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  # الوسوم القائمة (v2.0.0 · v2.1.0) لا تُطلق شيئًا بأثر رجعي، فيلزم مسار يدوي
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'الوسم المراد نشره (مثال: v2.1.0)'
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: Build · smoke · push
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+      version: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      # أسماء صور GHCR يجب أن تكون بأحرف صغيرة، واسم المالك ليس كذلك بالضرورة
+      - name: Resolve image name and version
+        id: meta
+        run: |
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          version="${{ inputs.tag || github.ref_name }}"
+          echo "image=ghcr.io/${owner}/tender-api" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "نشر ${version} إلى ghcr.io/${owner}/tender-api"
+
+      # H7.3 — سرّ عابر يُولَّد داخل التشغيل: الصورة ترفض الأسرار الضعيفة (H0.1)
+      - name: Generate a throwaway JWT secret
+        run: echo "JWT_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
+      # يبني الصورتين معًا ويسم صورة التشغيل بـ`tender-api` (حقل image في compose)
+      - name: Build images
+        run: docker compose build
+
+      - name: Start the stack
+        run: docker compose up -d
+
+      # البوابة: 18 فحصًا داخل الحاوية. فشلها يوقف الوظيفة قبل أي دفع.
+      - name: Smoke test
+        run: bash scripts/docker-smoke-test.sh
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Tear down
+        run: docker compose down -v
+
+      # الدخول بعد الدخان لا قبله: لا داعي لرمز سجلّ في وظيفة قد تفشل باكرًا
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # الصورة المدفوعة هي **نفسها** التي اجتازت الدخان أعلاه، لا إعادة بناء
+      - name: Tag and push
+        run: |
+          set -euo pipefail
+          image="${{ steps.meta.outputs.image }}"
+          version="${{ steps.meta.outputs.version }}"
+          sha_tag="sha-$(git rev-parse --short HEAD)"
+          # لا وسم `latest`: خادم إنتاج يسحب `latest` لا يعرف ما الذي يعمل عليه
+          docker tag tender-api "${image}:${version}"
+          docker tag tender-api "${image}:${sha_tag}"
+          docker push "${image}:${version}"
+          docker push "${image}:${sha_tag}"
+          echo "تم دفع ${image}:${version} و ${image}:${sha_tag}"
+
+  # D0.1 (Verify) — «على جهاز نظيف»: runner جديد لا يملك الصورة محليًا،
+  # ولا يبني شيئًا، ولا يرى سياق البناء. يسحب المنشور ويشغّله فقط.
+  verify-published:
+    name: Pull published image and run it
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: tender_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull the published image
+        run: docker pull "${{ needs.publish.outputs.image }}:${{ needs.publish.outputs.version }}"
+
+      - name: Report image size and digest
+        run: |
+          ref="${{ needs.publish.outputs.image }}:${{ needs.publish.outputs.version }}"
+          docker image ls "$ref" --format '{{.Repository}}:{{.Tag}} {{.Size}}'
+          docker image inspect "$ref" --format 'digest: {{index .RepoDigests 0}}'
+
+      # `--network host` ليصل من الحاوية إلى postgres الخدمة على مضيف الـrunner
+      - name: Run the pulled image
+        run: |
+          set -euo pipefail
+          docker run -d --name tender_api_published --network host \
+            -e DATABASE_URL='postgresql://postgres:postgres@127.0.0.1:5432/tender_dev' \
+            -e JWT_SECRET="$(openssl rand -hex 32)" \
+            -e NODE_ENV=production \
+            -e PORT=4000 \
+            "${{ needs.publish.outputs.image }}:${{ needs.publish.outputs.version }}"
+
+      - name: Wait for the API to answer
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 5 http://127.0.0.1:4000/livez >/dev/null 2>&1; then
+              echo "ردّ بعد $((i * 3)) ثانية"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "لم يردّ خلال 90 ثانية"; docker logs tender_api_published; exit 1
+
+      # `/readyz` ينفّذ SELECT 1 عبر Prisma ⇒ يثبت أن عميل Prisma ومحرّكه
+      # سليمان **داخل الصورة المنشورة**، لا في نسخة بُنيت محليًا
+      - name: Check health endpoints
+        run: |
+          set -euo pipefail
+          live=$(curl -fsS http://127.0.0.1:4000/livez)
+          ready=$(curl -fsS http://127.0.0.1:4000/readyz)
+          echo "livez : $live"
+          echo "readyz: $ready"
+          echo "$live"  | grep -q '"status":"live"'
+          echo "$ready" | grep -q '"status":"ready"'
+          # مسار محمي ⇒ 401 يثبت أن التطبيق يخدم مساراته لا فحوص الصحة فقط
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4000/v1/tenders)
+          echo "/v1/tenders ⇒ $code"
+          [ "$code" = "401" ]
+
+      - name: Container logs
+        if: always()
+        run: docker logs tender_api_published
+
+      - name: Clean up
+        if: always()
+        run: docker rm -f tender_api_published
