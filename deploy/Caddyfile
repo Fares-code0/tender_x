@@ -29,7 +29,7 @@
 	# التطوير (`apps/web/vite.config.ts`). بدون الحذف يصل المسار
 	# `/api/v1/tenders` إلى الـAPI فيردّ 404 على كل نداء.
 	handle /api/* {
-		uri strip_prefix /api
+		# مكسور عمدًا للاختبار السلبي
 		reverse_proxy api:4000 {
 			# الـAPI على `trust proxy` (H0.2) فيقرأ هذه ليصح `req.ip`
 			# في تحديد المعدل، و`secure` في الكوكي.
