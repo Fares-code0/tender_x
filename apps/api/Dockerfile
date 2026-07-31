@@ -42,19 +42,24 @@ RUN pnpm --filter @tender/api build
 
 # تبعيات الإنتاج فقط لصورة التشغيل.
 # `--legacy` مطلوب: pnpm v10+ يرفض الـdeploy بدون `inject-workspace-packages`.
-RUN pnpm --filter @tender/api --prod deploy --legacy /app/deploy
+#
+# المخرج **خارج `/app`** عمدًا: `COPY . .` أعلاه ينسخ المستودع كاملًا إلى
+# `/app`، فأي مجلد جذري باسم `deploy/` (وقد أُضيف واحد في D1 للـCaddyfile)
+# يجعل `/app/deploy` غير فارغ ⇒ `ERR_PNPM_DEPLOY_DIR_NOT_EMPTY`.
+# مسار خارج شجرة المستودع يُنهي هذا التصادم من جذره.
+RUN pnpm --filter @tender/api --prod deploy --legacy /opt/tender-api
 
 # ⚠️ `deploy` يعيد بناء `node_modules` من مخزن pnpm، فلا ينتقل إليه عميل Prisma
 # المولَّد في السطر أعلاه (يُكتب داخل مسار المخزن الافتراضي لا داخل الحزمة).
 # بدون إعادة التوليد هنا تُقلع الحاوية ثم تسقط بـ
-# «@prisma/client did not initialize yet». نمرّر مخططًا داخل `deploy` ليَحلّ
-# مسار `@prisma/client` إلى `/app/deploy/node_modules` فيولَّد العميل بجواره.
-COPY apps/api/prisma /app/deploy/prisma
+# «@prisma/client did not initialize yet». نمرّر مخططًا داخل مخرج الـdeploy ليَحلّ
+# مسار `@prisma/client` إلى `/opt/tender-api/node_modules` فيولَّد العميل بجواره.
+COPY apps/api/prisma /opt/tender-api/prisma
 # تُستدعى أداة prisma مباشرةً لا عبر `pnpm exec`: pnpm 11 يتحقق من تطابق
 # node_modules قبل كل تنفيذ، فيرى `deploy` تغييرًا ويحاول `pnpm install
 # --production` ثم يسقط بـERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY —
 # وحتى لو نجح لأفسد node_modules الخاص بمرحلة البناء.
-RUN /app/apps/api/node_modules/.bin/prisma generate --schema /app/deploy/prisma/schema.prisma
+RUN /app/apps/api/node_modules/.bin/prisma generate --schema /opt/tender-api/prisma/schema.prisma
 
 # ---------- 3) التشغيل ----------
 FROM node:22-bookworm-slim AS runtime
@@ -72,7 +77,7 @@ RUN groupadd --system --gid 1001 nodejs \
   && useradd --system --uid 1001 --gid nodejs nodeuser
 
 # تبعيات الإنتاج + عميل Prisma المولَّد + الحزمة المبنيّة
-COPY --from=build --chown=nodeuser:nodejs /app/deploy/node_modules ./node_modules
+COPY --from=build --chown=nodeuser:nodejs /opt/tender-api/node_modules ./node_modules
 COPY --from=build --chown=nodeuser:nodejs /app/apps/api/dist ./dist
 # المخطط والهجرات للرجوع إليها ولتشغيل `prisma migrate deploy` عند الحاجة.
 # ملاحظة: أداة prisma تطويرية فلا وجود لها في هذه الصورة — الهجرات تُطبَّق

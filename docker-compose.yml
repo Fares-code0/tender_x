@@ -1,9 +1,11 @@
-# H7.1 — تشغيل المنظومة كاملة محليًا: قاعدة + هجرات + واجهة API.
+# H7.1 · D1 — المنظومة كاملة محليًا: قاعدة + هجرات + بيانات تجريبية + API
+# + بروكسي يخدم الواجهة. **للتطوير و CI فقط** — compose الإنتاج في D2.
 #
 #   JWT_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))") \
 #     docker compose up --build -d
 #
-# ثم اختبار الدخان: bash scripts/docker-smoke-test.sh
+# ثم افتح https://localhost (شهادة محلية موقّعة ذاتيًا ⇒ تحذير المتصفح متوقّع)
+# واختبار الدخان: bash scripts/docker-smoke-test.sh
 services:
   db:
     image: postgres:16
@@ -63,15 +65,58 @@ services:
       JWT_SECRET: ${JWT_SECRET:?required — export JWT_SECRET before running docker compose}
       NODE_ENV: production
       PORT: 4000
-      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:5173}
-      # لا بروكسي أمام الحاوية في هذا التشغيل المحلي (H0.2)
-      TRUST_PROXY: 0
-    ports:
-      - '4000:4000'
+      # D1 — أصل واحد: أصل الواجهة هو أصل الـAPI نفسه
+      WEB_ORIGIN: ${SITE_URL:-https://localhost}
+      # D1 — صار أمام الحاوية بروكسي واحد (Caddy)، فقفزة واحدة موثوقة (H0.2)
+      TRUST_PROXY: 1
+    # D1 — **لا منفذ منشور**: كل شيء يمرّ من البروكسي. نشر 4000 هنا يخلق
+    # أصلًا ثانيًا يلتفّ على البروكسي فيخفي أعطال المسارات والكوكي.
+    expose:
+      - '4000'
     volumes:
       # المرفقات خارج طبقة الحاوية حتى تبقى بعد إعادة البناء
       - tender_uploads:/app/uploads
 
+  # بيانات تجريبية — للتطوير و CI فقط، ولا وجود لها في compose الإنتاج (D2).
+  # لازمة لفحص دورة تسجيل الدخول في اختبار الدخان (D1.4).
+  seed:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: build
+    container_name: tender_seed
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/tender_dev
+    # مباشرةً لا عبر `pnpm exec` — فحص pnpm 11 لتطابق node_modules يسقط بلا TTY
+    working_dir: /app/apps/api
+    command: ./node_modules/.bin/tsx prisma/seed.ts
+    restart: 'no'
+
+  # D1 — البروكسي العكسي: يخدم الواجهة ويمرّر /api إلى الـAPI بأصل واحد
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    image: tender-web
+    container_name: tender_web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
+    # المنافذ المحجوزة على المضيف ⇒ غير المحجوزة في الحاوية (مستخدم غير جذر)
+    ports:
+      - '80:8080'
+      - '443:8443'
+    volumes:
+      # شهادات Caddy المحلية تبقى بين عمليات الإقلاع فلا تُصدَر من جديد
+      - tender_caddy_data:/data
+
 volumes:
   tender_pgdata:
   tender_uploads:
+  tender_caddy_data:
