@@ -200,8 +200,13 @@ else
 fi
 
 # httpOnly تمنع سرقة الكوكي بـXSS، وSecure تمنع إرسالها على HTTP.
-# غيابهما تراجعٌ صامت عن H1.2. العمود الرابع في ملف الكوكي هو علم Secure.
-if grep -q '#HttpOnly_' "$COOKIE_JAR" && awk '$0 !~ /^#/ && $4=="TRUE" && $6=="token"' "$COOKIE_JAR" | grep -q .; then
+# غيابهما تراجعٌ صامت عن H1.2.
+#
+# صيغة ملف كوكي Netscape: domain · includeSubdomains · path · secure ·
+# expiry · name · value. وكوكي httpOnly تُكتب ببادئة `#HttpOnly_` على حقل
+# النطاق — فهي أسطر تبدأ بـ`#` وليست تعليقات. استبعادها كتعليقات يجعل
+# الفحص يفشل على كوكي **سليمة**.
+if awk '$1 ~ /^#HttpOnly_/ && $4 == "TRUE" && $6 == "token"' "$COOKIE_JAR" | grep -q .; then
   ok "كوكي الجلسة httpOnly و Secure"
 else
   bad "كوكي الجلسة httpOnly و Secure" "$(grep -v '^$' "$COOKIE_JAR" | tail -3)"
@@ -216,7 +221,9 @@ fi
 
 # أي منفذ مكشوف للـAPI يخلق أصلًا ثانيًا يلتفّ على البروكسي فيُخفي أعطال
 # المسارات والكوكي بدل أن يكشفها
-direct=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://localhost:4000/livez || echo 000)
+# `|| true` لا `|| echo 000`: curl يطبع `000` بنفسه عند تعذّر الاتصال، فإضافة
+# echo تُنتج `000000` ويفشل الفحص على منفذ **مغلق فعلًا**.
+direct=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://localhost:4000/livez 2>/dev/null || true)
 if [ "$direct" = "000" ]; then
   ok "منفذ الـAPI غير مكشوف على المضيف (أصل واحد فعلًا)"
 else
