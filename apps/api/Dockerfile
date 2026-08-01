@@ -79,9 +79,16 @@ RUN groupadd --system --gid 1001 nodejs \
 # تبعيات الإنتاج + عميل Prisma المولَّد + الحزمة المبنيّة
 COPY --from=build --chown=nodeuser:nodejs /opt/tender-api/node_modules ./node_modules
 COPY --from=build --chown=nodeuser:nodejs /app/apps/api/dist ./dist
-# المخطط والهجرات للرجوع إليها ولتشغيل `prisma migrate deploy` عند الحاجة.
-# ملاحظة: أداة prisma تطويرية فلا وجود لها في هذه الصورة — الهجرات تُطبَّق
-# كخطوة نشر منفصلة (خدمة `migrate` في docker-compose) لا عند إقلاع كل نسخة.
+# المخطط والهجرات: لازمة لتشغيل `prisma migrate deploy` من هذه الصورة نفسها.
+#
+# أداة `prisma` **تبعية إنتاج** لا تطوير (D2)، فيشملها `pnpm --prod deploy`
+# وتصل إلى `node_modules/.bin/prisma` هنا. البديل — نشر صورة ثانية من
+# مرحلة `build` — كان يعني صورتين تنزلق إحداهما عن الأخرى؛ وإبقاء الأداة
+# خارج الصورة كان يعني أن خادمًا لا يملك سياق البناء لا يستطيع الهجرة أصلًا.
+# الأداة والعميل من نفس الإصدار حتمًا لأنهما من قفل واحد.
+#
+# الهجرات تبقى **خطوة نشر منفصلة** لمرة واحدة (خدمة `migrate`) لا عند إقلاع
+# كل نسخة: نسخ متوازية تتسابق على الهجرة نفسها.
 COPY --from=build --chown=nodeuser:nodejs /app/apps/api/prisma ./prisma
 COPY --from=build --chown=nodeuser:nodejs /app/apps/api/package.json ./package.json
 
