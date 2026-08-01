@@ -42,8 +42,11 @@ USER webuser
 EXPOSE 8080 8443
 
 # فحص حياة لا يعتمد على الـAPI: يثبت أن الملفات الثابتة تُخدَم.
-# على HTTPS لا HTTP: منفذ HTTP يعيد تحويلًا إلى HTTPS فلا يثبت شيئًا.
-# `--no-check-certificate` لأن الشهادة محلية موقّعة ذاتيًا (`tls internal`)،
-# والمقصود هنا حياة الخادم لا صلاحية الشهادة.
+#
+# العنوان من البيئة لأن المنفذ والمخطَّط يختلفان بين البيئات: محليًا HTTPS
+# على 8443، وعلى Render HTTP على المنفذ الذي تحدّده المنصّة. عنوان ثابت هنا
+# يجعل الفحص يفشل دائمًا في إحدى البيئتين.
+# `--no-check-certificate` لأن الشهادة المحلية موقّعة ذاتيًا، والمقصود حياة
+# الخادم لا صلاحية الشهادة.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD wget --no-verbose --tries=1 --no-check-certificate --spider https://127.0.0.1:8443/ || exit 1
+  CMD wget --no-verbose --tries=1 --no-check-certificate --spider "${HEALTHCHECK_URL:-https://127.0.0.1:8443/}" || exit 1
