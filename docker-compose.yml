@@ -28,22 +28,23 @@ services:
       start_period: 10s
 
   # الهجرات كخطوة نشر منفصلة تعمل **مرة واحدة**، لا عند إقلاع كل نسخة:
-  # نسخ متوازية تتسابق على نفس الهجرة. تُبنى من مرحلة `build` لأن أداة prisma
-  # تطويرية فلا وجود لها في صورة التشغيل.
+  # نسخ متوازية تتسابق على نفس الهجرة.
+  #
+  # D2 — تعمل من **صورة التشغيل نفسها** لا من مرحلة `build`: أداة prisma صارت
+  # تبعية إنتاج فتصل إلى الصورة المنشورة. وهذا شرط أن يستطيع خادم لا يملك
+  # سياق البناء تطبيق هجرة — وهو حال أي خادم إنتاج.
   migrate:
+    image: tender-api
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-      target: build
     container_name: tender_migrate
     depends_on:
       db:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/tender_dev
-    # مباشرةً لا عبر `pnpm exec` — لنفس سبب خطوة generate في الـDockerfile:
-    # فحص pnpm 11 لتطابق node_modules يحاول تثبيتًا ثم يسقط بلا TTY.
-    command: /app/apps/api/node_modules/.bin/prisma migrate deploy --schema /app/apps/api/prisma/schema.prisma
+    command: ./node_modules/.bin/prisma migrate deploy --schema ./prisma/schema.prisma
     restart: 'no'
 
   api:

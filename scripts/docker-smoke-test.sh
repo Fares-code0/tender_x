@@ -148,6 +148,16 @@ else
   bad "الصورة نظيفة من أدوات التطوير والأسرار" "وُجد tsx أو .env في /app"
 fi
 
+# D2 — أداة prisma داخل صورة التشغيل: بدونها لا يستطيع خادم لا يملك سياق
+# البناء تطبيق هجرة. و`migrate status` يثبت الثلاثة معًا: الأداة تعمل،
+# والقاعدة موصولة، والهجرات مطبَّقة فعلًا — لا مجرد وجود ملف تنفيذي.
+if in_api ./node_modules/.bin/prisma migrate status --schema ./prisma/schema.prisma >/dev/null 2>&1; then
+  ok "أداة prisma تعمل داخل صورة التشغيل والهجرات مطبَّقة"
+else
+  bad "أداة prisma تعمل داخل صورة التشغيل" \
+    "$(in_api ./node_modules/.bin/prisma migrate status --schema ./prisma/schema.prisma | tail -5)"
+fi
+
 head_ "5) الأصل الواحد عبر البروكسي (D1)"
 
 # انتظار البروكسي: إصدار الشهادة المحلية يستغرق لحظات بعد الإقلاع
