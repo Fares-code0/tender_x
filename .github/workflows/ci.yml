@@ -118,6 +118,17 @@ jobs:
       - name: Smoke test inside the container
         run: bash scripts/docker-smoke-test.sh
 
+      # اختبار الدخان يغطّي وضع `localhost` وحده. وضع Render (`:PORT` بلا
+      # اسم مضيف ⇒ بلا شهادة) لا يمرّ به أحد قبل Render نفسه، فيُتحقَّق منه
+      # هنا بمحلّل Caddy: خطأ صياغة يظهر في CI لا في نشر فاشل.
+      - name: Validate the Caddyfile in Render mode
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint caddy \
+            -e SITE_ADDRESS=':10000' \
+            -e API_UPSTREAM='tender-api:4000' \
+            tender-web validate --config /etc/caddy/Caddyfile --adapter caddyfile
+
       # السجلات كاملة عند الفشل — بلا هذا يصبح تشخيص عطل CI تخمينًا
       - name: Dump logs on failure
         if: failure()
