@@ -1,0 +1,133 @@
+# D2.5 — نشر إصدار موسوم إلى خادم عبر SSH.
+#
+# **لا نشر تلقائي عند الدمج.** النشر قرار بشري: `workflow_dispatch` وحده.
+# ودمج شيء في `main` لا يعني أن أحدًا مستعد لتحمّل تبعاته على الإنتاج الآن.
+#
+# التراجع ليس مسارًا خاصًا: أعد التشغيل بوسم أقدم. لهذا تُنشر الصور بوسوم
+# صريحة ولا يُستعمل `latest` أبدًا.
+#
+# الأسرار المطلوبة (لكل بيئة على حدة في إعدادات Environments):
+#   SSH_HOST · SSH_USER · SSH_KEY (مفتاح خاص) · GHCR_PULL_TOKEN (read:packages)
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'الوسم المراد نشره (مثال: v2.2.0)'
+        required: true
+        type: string
+      environment:
+        description: 'البيئة'
+        required: true
+        type: choice
+        options: [staging, production]
+        default: staging
+
+# نشران متزامنان على بيئة واحدة يتسابقان على الهجرة نفسها
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.tag }} to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # البيئة تحمل أسرارها الخاصة، وتتيح اشتراط موافقة يدوية للإنتاج
+    environment:
+      name: ${{ inputs.environment }}
+      url: https://${{ vars.SITE_ADDRESS }}
+
+    steps:
+      # عند الوسم المطلوب نشره تحديدًا: ملف compose المنقول إلى الخادم يجب أن
+      # يطابق الإصدار المنشور، لا آخر ما على `main`
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Verify the tag has the deployment files
+        run: |
+          set -euo pipefail
+          for f in docker-compose.prod.yml; do
+            [ -f "$f" ] || { echo "الوسم ${{ inputs.tag }} لا يحوي $f — إصدار أقدم من D2"; exit 1; }
+          done
+          echo "ملفات النشر موجودة في الوسم ✓"
+
+      - name: Set up the SSH key
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          # يثبّت بصمة المضيف بدل قبولها عمياء: قبول أي مفتاح يفتح الباب
+          # لاعتراض الاتصال (MITM) على أول اتصال
+          ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Copy the compose file to the server
+        run: |
+          set -euo pipefail
+          scp -i ~/.ssh/id_deploy docker-compose.prod.yml \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/tender/docker-compose.prod.yml"
+
+      # الخادم لا يحتفظ برمز طويل الأمد: يُسجَّل الدخول ثم يُمحى في نفس الجلسة
+      - name: Pull images, migrate, and restart
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_deploy "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            IMAGE_TAG='${{ inputs.tag }}' \
+            GHCR_TOKEN='${{ secrets.GHCR_PULL_TOKEN }}' \
+            GHCR_USER='${{ github.actor }}' \
+            'bash -euo pipefail -s' <<'REMOTE'
+            cd /opt/tender
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+            export IMAGE_TAG
+            docker compose --env-file .env.production -f docker-compose.prod.yml pull
+
+            # الهجرات أولًا وبشكل منفصل: فشلها يجب أن يوقف النشر **قبل** أن
+            # تُستبدل الحاويات، فتبقى النسخة العاملة كما هي
+            docker compose --env-file .env.production -f docker-compose.prod.yml run --rm migrate
+
+            docker compose --env-file .env.production -f docker-compose.prod.yml up -d --remove-orphans
+
+            docker logout ghcr.io
+            # الصور القديمة تتراكم حتى تملأ القرص؛ الوسوم المستعملة محفوظة
+            docker image prune -f
+          REMOTE
+
+      # النشر لا يُعدّ ناجحًا لأن الأوامر رجعت بصفر: الحكم من الخارج على
+      # العنوان العام، عبر شهادة حقيقية (بلا -k)
+      - name: Verify the deployment from outside
+        run: |
+          set -euo pipefail
+          url="https://${{ vars.SITE_ADDRESS }}"
+          for i in $(seq 1 20); do
+            if curl -fsS --max-time 10 "$url/api/livez" >/dev/null 2>&1; then
+              echo "استجاب بعد $((i * 6)) ثانية"
+              break
+            fi
+            [ "$i" = "20" ] && { echo "لم يستجب خلال 120 ثانية"; exit 1; }
+            sleep 6
+          done
+
+          echo "livez : $(curl -fsS "$url/api/livez")"
+          # `/readyz` يلمس القاعدة ⇒ يثبت أن الهجرات والاتصال سليمان
+          echo "readyz: $(curl -fsS "$url/api/readyz")"
+          # الواجهة تُخدَم من الأصل نفسه
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$url/")
+          echo "الواجهة ⇒ $code"
+          [ "$code" = "200" ]
+
+      - name: Dump remote logs on failure
+        if: failure()
+        run: |
+          ssh -i ~/.ssh/id_deploy "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            'cd /opt/tender && docker compose --env-file .env.production -f docker-compose.prod.yml logs --tail 100 --no-color' || true
+
+      - name: Remove the SSH key from the runner
+        if: always()
+        run: rm -f ~/.ssh/id_deploy

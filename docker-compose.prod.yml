@@ -1,0 +1,113 @@
+# D2 — منظومة الإنتاج على خادم واحد.
+#
+# يختلف عن `docker-compose.yml` (تطوير و CI) في أربعة أمور جوهرية:
+#   1. `image:` من GHCR بوسم صريح — **لا `build:`**: الخادم لا يبني، بل يشغّل
+#      ما اجتاز بوابة الإصدار بالضبط.
+#   2. لا خدمة `seed` — بيانات تجريبية في الإنتاج خطأ لا سهو.
+#   3. لا منفذ مكشوف إلا 80/443 من البروكسي.
+#   4. الأسرار من `env_file` لا من قيم مكتوبة في الملف.
+#
+# التشغيل على الخادم:
+#   IMAGE_TAG=v2.2.0 docker compose --env-file .env.production \
+#     -f docker-compose.prod.yml up -d
+#
+# ⚠️ `--env-file` **إلزامي**، وليس تكرارًا لـ`env_file` في الخدمات: الأول
+# يغذّي استبدال `${...}` داخل هذا الملف، والثاني يمرّر المتغيّرات إلى داخل
+# الحاويات. بدون `--env-file` يفشل الاستبدال ويتوقف الأمر بـ«required».
+#
+# لا يعمل هذا الملف محليًا بلا `.env.production` — وهذا مقصود.
+
+services:
+  db:
+    image: postgres:16
+    container_name: tender_db
+    restart: unless-stopped
+    # **بلا `env_file` عمدًا:** تحميل الملف كاملًا هنا يضع `JWT_SECRET` وبقيّة
+    # أسرار التطبيق داخل حاوية القاعدة بلا سبب. لا تأخذ الخدمة إلا ما يخصّها.
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+      POSTGRES_DB: ${POSTGRES_DB:?required}
+    volumes:
+      - tender_pgdata:/var/lib/postgresql/data
+    # **لا `ports`**: القاعدة تُبلَغ من شبكة compose وحدها. كشفها للإنترنت
+    # أسرع طريقة لخسارة كل شيء — راجع D2.2.
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # خطوة نشر لمرة واحدة، من **صورة التشغيل نفسها** (أداة prisma تبعية إنتاج).
+  # نسخ متوازية تتسابق على الهجرة نفسها، فلا تُشغَّل عند إقلاع كل نسخة.
+  migrate:
+    image: ghcr.io/fares-code0/tender-api:${IMAGE_TAG:?required — export IMAGE_TAG=vX.Y.Z}
+    container_name: tender_migrate
+    restart: 'no'
+    depends_on:
+      db:
+        condition: service_healthy
+    # الهجرات لا تحتاج إلا عنوان القاعدة — لا سرّ توقيع ولا إعدادات تطبيق
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?required}
+    command: ./node_modules/.bin/prisma migrate deploy --schema ./prisma/schema.prisma
+
+  api:
+    image: ghcr.io/fares-code0/tender-api:${IMAGE_TAG:?required — export IMAGE_TAG=vX.Y.Z}
+    container_name: tender_api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    env_file: .env.production
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      # أصل واحد: أصل الواجهة هو أصل الـAPI نفسه
+      WEB_ORIGIN: https://${SITE_ADDRESS:?required}
+      # قفزة واحدة موثوقة: Caddy وحده أمام التطبيق (H0.2)
+      TRUST_PROXY: 1
+    expose:
+      - '4000'
+    volumes:
+      - tender_uploads:/app/uploads
+    # D4.4 — سجلات pino غير محدودة تملأ القرص ثم تُسقط النظام
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+
+  web:
+    image: ghcr.io/fares-code0/tender-web:${IMAGE_TAG:?required — export IMAGE_TAG=vX.Y.Z}
+    container_name: tender_web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?required}
+      # بريد حساب ACME ⇒ شهادة Let's Encrypt حقيقية بدل الموقّعة ذاتيًا
+      TLS_MODE: ${ACME_EMAIL:?required — بريد لتنبيهات انتهاء الشهادة}
+    ports:
+      # المنفذان الوحيدان المكشوفان في المنظومة كلها.
+      # 80 لازم رغم التحويل: تحدّي ACME من نوع HTTP-01 يصل عليه.
+      - '80:8080'
+      - '443:8443'
+    volumes:
+      # **حجم دائم إلزامي**: الشهادات تعيش هنا. بدونه تُطلب شهادة جديدة عند
+      # كل إقلاع فتصطدم بحدود Let's Encrypt ويتوقف إصدار الشهادات أسبوعًا.
+      - tender_caddy_data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+
+volumes:
+  tender_pgdata:
+  tender_uploads:
+  tender_caddy_data:

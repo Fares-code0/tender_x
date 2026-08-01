@@ -4,6 +4,10 @@ build/
 coverage/
 .env
 .env.local
+# D2 — أسرار الإنتاج لا تُودَع أبدًا؛ يُستثنى المثال الخالي من القيم
+.env.*
+!.env.example
+!.env.*.example
 *.tsbuildinfo
 .pgdata/
 uploads/
