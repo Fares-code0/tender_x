@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { Router } from 'express';
+import { mimeTypeForFile } from '@tender/shared';
 import { AppError, validate } from '../../lib/errors';
 import * as tenderRepo from '../../repositories/tenderRepository';
 import * as attachmentRepo from '../../repositories/attachmentRepository';
@@ -40,7 +41,8 @@ tenderAttachmentsRouter.post('/:id/attachments', requireRole('WRITER'), (req, re
             tenderId: tender.id,
             fileName,
             storagePath: key,
-            mimeType: req.file!.mimetype,
+            // S6 — من الامتداد المُتحقَّق منه لا من ترويسة العميل
+            mimeType: mimeTypeForFile(fileName),
             size: req.file!.size,
             version,
             uploadedById: req.user!.id,

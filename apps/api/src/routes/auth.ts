@@ -7,11 +7,27 @@ import * as userRepo from '../repositories/userRepository';
 import * as tokenRepo from '../repositories/tokenRepository';
 import { AppError, validate } from '../lib/errors';
 import { env } from '../lib/env';
+import { lockDurationMs } from '../services/loginThrottle';
 import { requireAuth } from '../middleware/auth';
 
 export const authRouter = Router();
 
 const COOKIE_NAME = 'token';
+
+/**
+ * S2 — تجزئة وهمية لمعادلة زمن الردّ.
+ *
+ * بدونها يعود الطلب على بريد غير مسجَّل **قبل** أن يُستدعى bcrypt (≈3ms)، بينما
+ * بريد مسجَّل بكلمة مرور خاطئة يدفع كلفة التجزئة كاملة (≈80ms). الفارق ٢٦ ضعفًا
+ * يجعل نموذج الدخول العام أداة تعداد: يجرّب المهاجم بُرد الموظفين فيعرف من الزمن
+ * وحده أيها مسجَّل — ثم يوجّه إليها القفل أو التخمين.
+ *
+ * توحيد الرسالة والرمز وحده لا يكفي؛ لا بد أن تُدفع الكلفة نفسها في المسارين.
+ * التكلفة 12 مطابقة لتكلفة تجزئة كلمات المرور الفعلية (راجع `adminUsers.ts`)،
+ * وإلا اختلف الزمن مجددًا. القيمة تجزئة لسلسلة عشوائية لا يعرفها أحد، وليست
+ * سرًّا: لا تُقارن إلا بكلمة مرور مآلها الرفض في كل الأحوال.
+ */
+const DUMMY_PASSWORD_HASH = '$2b$12$GxyTY9FEIAgTJJiFhQmSRuRiBYOAbjgrZT4S68np/XNEzxxhsZoYm';
 
 // خيارات الكوكي المشتركة بين الضبط والمسح — يجب أن تتطابق وإلا لا يمسحها المتصفح
 // H1.2 — sameSite=strict لطلبات التغيير (حماية CSRF لتطبيق داخلي)
@@ -26,7 +42,12 @@ authRouter.post('/login', async (req, res, next) => {
   try {
     const { email, password } = validate(loginSchema, req.body);
     const user = await userRepo.findByEmail(email);
-    if (!user) throw new AppError(401, 'INVALID_CREDENTIALS', 'بيانات الدخول غير صحيحة');
+    if (!user) {
+      // S2 — ندفع كلفة التجزئة نفسها قبل الرفض حتى لا يميّز الزمنُ المسجَّلَ
+      // من غير المسجَّل. النتيجة مُهمَلة عمدًا: الردّ واحد في كل الأحوال.
+      await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
+      throw new AppError(401, 'INVALID_CREDENTIALS', 'بيانات الدخول غير صحيحة');
+    }
     if (!user.isActive) throw new AppError(403, 'ACCOUNT_DISABLED', 'هذا الحساب معطّل');
 
     // H2.3 — الحساب مقفول مؤقتًا بعد محاولات فاشلة متتالية
@@ -40,16 +61,15 @@ authRouter.post('/login', async (req, res, next) => {
 
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) {
-      // H2.3 — عدّاد المحاولات الفاشلة؛ عند بلوغ الحد يُقفل الحساب لمدة محددة
+      // H2.3 / S4 — العدّاد **تراكمي** لا يُصفَّر عند بلوغ الحد: هو أساس التصاعد،
+      // فتصفيره كان يعيد كل جولة إلى نافذة البداية نفسها مهما تكرّر الهجوم.
       const attempts = user.failedLoginAttempts + 1;
-      const reachedLimit = attempts >= env.loginMaxFailedAttempts;
+      const lockMs = lockDurationMs(attempts);
       await userRepo.updateLoginState(user.id, {
-        failedLoginAttempts: reachedLimit ? 0 : attempts,
-        lockedUntil: reachedLimit
-          ? new Date(Date.now() + env.loginLockMinutes * 60 * 1000)
-          : user.lockedUntil,
+        failedLoginAttempts: attempts,
+        lockedUntil: lockMs > 0 ? new Date(Date.now() + lockMs) : user.lockedUntil,
       });
-      if (reachedLimit) {
+      if (lockMs > 0) {
         throw new AppError(
           423,
           'ACCOUNT_LOCKED',

@@ -6,7 +6,10 @@ const prisma = new PrismaClient();
 export const SEED_PASSWORD = 'Test1234!';
 
 async function main() {
-  const passwordHash = await bcrypt.hash(SEED_PASSWORD, 10);
+  // S2 — نفس تكلفة `adminUsers.ts` (12) لا 10: التجزئة الوهمية التي تعادل زمن
+  // الردّ في `auth.ts` مضبوطة على 12، فحسابات بتكلفة أقل تجعل البريد **غير**
+  // المسجَّل أبطأ من المسجَّل — نفس قناة التوقيت مقلوبة.
+  const passwordHash = await bcrypt.hash(SEED_PASSWORD, 12);
 
   const users = [
     { email: 'admin@test.com', name: 'مدير النظام', role: Role.ADMIN },

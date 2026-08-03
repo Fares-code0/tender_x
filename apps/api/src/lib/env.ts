@@ -59,10 +59,13 @@ const envSchema = z.object({
   AWS_REGION: z.string().min(1).optional(),
   // H5.3 — مدة صلاحية الكاش للقراءات الساخنة (ثوانٍ)
   CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(30),
-  // H6.4 — كشف /docs و/openapi.json. اضبطه false لإخفاء التوثيق في بيئة عامة.
+  // H6.4 / S5 — كشف /docs و/openapi.json. **الافتراض الإطفاء**: الافتراض
+  // السابق (`true`) جعل النشر الذاتي ينشر ٢٧ مسارًا بأشكال طلباتها لأي زائر
+  // لأن `docker-compose.prod.yml` لا يذكر المتغيّر أصلًا. الافتراض الآمن
+  // يجعل النسيان بلا أثر، والكشف قرارًا صريحًا (`DOCS_ENABLED=true` محليًا).
   DOCS_ENABLED: z
     .enum(['true', 'false'])
-    .default('true')
+    .default('false')
     .transform((v) => v === 'true'),
 });
 
