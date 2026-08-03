@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
+import bcrypt from 'bcrypt';
 import { createApp } from '../src/app';
 import { resetDb, createUser, loginAs, TEST_PASSWORD } from './helpers/db';
 
@@ -37,6 +38,38 @@ describe('Auth API (M1.3)', () => {
       .post('/v1/auth/login')
       .send({ email: 'nobody@test.com', password: TEST_PASSWORD });
     expect(res.status).toBe(401);
+  });
+
+  // S2 — قناة توقيت: الردّ على بريد غير موجود كان يعود قبل bcrypt (3ms) بينما
+  // بريد موجود بكلمة مرور خاطئة يدفع كلفة التجزئة (80ms). الفارق وحده يكشف
+  // أي البُرد مسجَّل فعلًا، فيتحوّل نموذج الدخول إلى أداة تعداد للموظفين.
+  it('still hashes when the email is unknown (closes the timing oracle)', async () => {
+    const spy = vi.spyOn(bcrypt, 'compare');
+    try {
+      const res = await request(app)
+        .post('/v1/auth/login')
+        .send({ email: 'nobody@test.com', password: TEST_PASSWORD });
+
+      expect(res.status).toBe(401);
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  // الرسالة والرمز يجب أن يتطابقا حرفيًا، وإلا عاد التعداد من باب آخر
+  it('returns an identical body for an unknown email and a wrong password', async () => {
+    const user = await createUser('QA');
+
+    const unknown = await request(app)
+      .post('/v1/auth/login')
+      .send({ email: 'nobody@test.com', password: TEST_PASSWORD });
+    const wrongPassword = await request(app)
+      .post('/v1/auth/login')
+      .send({ email: user.email, password: 'wrong-password' });
+
+    expect(unknown.status).toBe(wrongPassword.status);
+    expect(unknown.body).toEqual(wrongPassword.body);
   });
 
   it('GET /auth/me without cookie returns 401', async () => {

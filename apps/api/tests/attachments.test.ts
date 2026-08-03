@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
+import { mimeTypeForFile } from '@tender/shared';
 import { createApp } from '../src/app';
 import { prisma } from '../src/lib/prisma';
 import { resetDb, createUser, loginAs } from './helpers/db';
@@ -152,6 +153,60 @@ describe('GET list + download (M5.2)', () => {
       .get(`/v1/attachments/${attachmentId}/download`)
       .set('Cookie', cookie);
     expect(res.status).toBe(200);
+  });
+});
+
+// S6 — نوع المحتوى كان يُؤخذ من ترويسة الرفع التي يتحكّم بها العميل، ثم يُعاد
+// حرفيًا في ترويسة التنزيل. قائمة الامتدادات المسموحة كانت مفروضة بينما النوع
+// المُعلَن غير مفحوص أصلًا: مرفق `.png` يُعلَن `text/html` فيعود كذلك. لا يُستغلّ
+// اليوم (`Content-Disposition: attachment` + `nosniff`)، لكن الاعتماد على ترويستين
+// دفاعيتين لحقيقة نملك مصدرها — الامتداد المُتحقَّق منه — رهانٌ بلا سبب.
+describe('Attachment content type is derived, never trusted (S6)', () => {
+  beforeEach(async () => await resetDb());
+
+  it('maps a known extension and falls back for anything else', () => {
+    expect(mimeTypeForFile('proposal.pdf')).toBe('application/pdf');
+    expect(mimeTypeForFile('shot.PNG')).toBe('image/png');
+    expect(mimeTypeForFile('العرض.docx')).toBe(
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    );
+    expect(mimeTypeForFile('no-extension')).toBe('application/octet-stream');
+  });
+
+  it('ignores a lying Content-Type on upload', async () => {
+    const { id, writerCookie } = await tenderWithWriter(app);
+    const res = await request(app)
+      .post(`/v1/tenders/${id}/attachments`)
+      .set('Cookie', writerCookie)
+      .attach('file', Buffer.from('<script>alert(1)</script>'), {
+        filename: 'innocent.png',
+        contentType: 'text/html',
+      });
+
+    expect(res.status).toBe(201);
+    const stored = await prisma.attachment.findUnique({ where: { id: res.body.attachment.id } });
+    expect(stored!.mimeType).toBe('image/png');
+  });
+
+  it('serves a derived Content-Type even for a row already stored with a bogus one', async () => {
+    const { id, writerCookie } = await tenderWithWriter(app);
+    const up = await request(app)
+      .post(`/v1/tenders/${id}/attachments`)
+      .set('Cookie', writerCookie)
+      .attach('file', Buffer.from('%PDF'), { filename: 'legacy.pdf', contentType: 'application/pdf' });
+
+    // صفٌّ قديم كُتب قبل هذا الإصلاح
+    await prisma.attachment.update({
+      where: { id: up.body.attachment.id },
+      data: { mimeType: 'text/html' },
+    });
+
+    const res = await request(app)
+      .get(`/v1/attachments/${up.body.attachment.id}/download`)
+      .set('Cookie', writerCookie);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/pdf');
   });
 });
 

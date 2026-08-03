@@ -187,6 +187,32 @@ else
   bad "/api/livez عبر البروكسي" "المُستلَم: $prox"
 fi
 
+# S1 — `/metrics` بلا مصادقة عمدًا (الكاشط يستدعيه من الشبكة الداخلية)، فلو
+# مرّ عبر البروكسي لصار سجلّ المسارات وأحجام الحركة ونسب الأخطاء متاحًا لأي
+# زائر مجهول. الحجب عند الحافة لا في التطبيق: الكاشط لا يمرّ بالبروكسي أصلًا.
+metrics=$("${CURL[@]}" -o /dev/null -w '%{http_code}' "$SITE_URL/api/metrics")
+if [ "$metrics" = "403" ]; then
+  ok "/api/metrics ⇒ 403 عند الحافة (المقاييس غير مكشوفة للعموم)"
+else
+  bad "/api/metrics محجوب عند الحافة" "المُستلَم: $metrics — سجلّ المسارات مكشوف"
+fi
+
+# المقاييس تبقى متاحة من داخل الشبكة (وإلا كسرنا المراقبة بدل أن نؤمّنها).
+#
+# لا `expect_endpoint` هنا: هو يقتطع المتن إلى ٢٠٠ محرف للعرض، بينما السجلّ
+# يتجاوز ١٥ كيلوبايت ويبدأ بمقاييس prom-client الافتراضية، فيقع `http_requests_total`
+# خارج المقتطع. الفحص بالمقتطع كان يفشل على `/metrics` **سليم**.
+metrics_out=$(in_api node -e "
+  fetch('http://127.0.0.1:4000/metrics')
+    .then(async (r) => { console.log(r.status, (await r.text()).includes('http_requests_total')); })
+    .catch((e) => { console.log('000', e.message); process.exit(1); });
+" | tr -d '\r')
+if [ "$metrics_out" = "200 true" ]; then
+  ok "/metrics ⇒ 200 من داخل الشبكة ويحوي http_requests_total (المراقبة سليمة)"
+else
+  bad "/metrics متاح داخليًا ويحوي http_requests_total" "المُستلَم: $metrics_out"
+fi
+
 head_ "6) دورة تسجيل دخول كاملة — جوهر D1"
 # لا يمرّ هذا الفحص إلا إذا صحّ **الثلاثة معًا**: الأصل الواحد، وحذف
 # البادئة، وسلوك الكوكي (httpOnly + sameSite=strict + secure في الإنتاج).

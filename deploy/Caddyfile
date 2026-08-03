@@ -38,12 +38,36 @@
 	# الخدمة الخاصة ومنفذها (`tender-api:4000`) — تصل عبر الشبكة الداخلية
 	# وحدها، فالـAPI لا يُعرَّض للإنترنت في أي بيئة.
 	handle /api/* {
-		uri strip_prefix /api
-		reverse_proxy {$API_UPSTREAM:api:4000} {
-			# الـAPI على `trust proxy` (H0.2) فيقرأ هذه ليصح `req.ip`
-			# في تحديد المعدل، و`secure` في الكوكي.
-			header_up X-Forwarded-Proto {scheme}
-			header_up X-Forwarded-For {remote_host}
+		# `route` لا `handle`: داخل الـroute تُنفَّذ التوجيهات **بترتيب
+		# كتابتها**، فيقع الحجب قبل `strip_prefix` حتمًا. بترتيب Caddy
+		# الافتراضي كان `uri` يسبق `respond` فيصبح المسار `/metrics`
+		# ولا يطابقه المُطابِق أدناه — حجبٌ يبدو صحيحًا ولا يحجب شيئًا.
+		route {
+			# S1 — `/metrics` بلا مصادقة عمدًا: الكاشط يستدعيه من الشبكة
+			# الداخلية مباشرةً على `api:4000` ولا يمرّ من هنا. تمريره عبر
+			# الباب العام كان يسلّم لأي زائر مجهول سجلّ المسارات وأحجام
+			# الحركة ونسب الأخطاء — خريطةً جاهزة للاستطلاع.
+			@metrics path /metrics /metrics/* /api/metrics /api/metrics/*
+			respond @metrics 403
+
+			uri strip_prefix /api
+			reverse_proxy {$API_UPSTREAM:api:4000} {
+				# الـAPI على `trust proxy` (H0.2) فيقرأ هذه ليصح `req.ip`
+				# في تحديد المعدل، و`secure` في الكوكي.
+				header_up X-Forwarded-Proto {scheme}
+
+				# S3 — **لا** `header_up X-Forwarded-For` هنا. الضبط الصريح
+				# كان **يستبدل** الترويسة بعنوان النظير المباشر، فتنهار هوية
+				# العميل حيث توجد حافة أمام Caddy (Render): كل الزوار يصلون
+				# بالعنوان نفسه ⇒ دلو واحد لتحديد المعدل للجميع، وخمس محاولات
+				# دخول فاشلة من أي شخص تحجب الدخول عن الجميع ربع ساعة.
+				#
+				# سلوك Caddy الافتراضي هو **الإلحاق**: يضيف عنوان النظير إلى
+				# ما وصل. فتصير السلسلة `<العميل>, <حافة Render>` على Render
+				# و`<ما زوّره العميل>, <العميل الحقيقي>` في compose. وExpress
+				# يعدّ من اليمين بمقدار TRUST_PROXY، فيصيب في الحالتين:
+				# Render يحتاج 2 (حافة + Caddy)، وcompose يبقى على 1.
+			}
 		}
 	}
 

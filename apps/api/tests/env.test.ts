@@ -53,4 +53,17 @@ describe('parseEnv (H0.1 — strict env validation)', () => {
     const env = parseEnv({ ...prodBase, TRUST_PROXY: '2' });
     expect(env.trustProxyHops).toBe(2);
   });
+
+  // S5 — التوثيق كان مكشوفًا افتراضيًا: `render.yaml` يطفئه صراحةً بينما
+  // `docker-compose.prod.yml` لا يذكره، فالنشر الذاتي ينشر ٢٧ مسارًا بأشكال
+  // طلباتها لأي زائر. الافتراض الآمن يجعل النسيان بلا أثر.
+  it('keeps /docs and /openapi.json off unless explicitly enabled', () => {
+    expect(parseEnv(prodBase).docsEnabled).toBe(false);
+    expect(parseEnv({ ...prodBase, NODE_ENV: 'development' }).docsEnabled).toBe(false);
+  });
+
+  it('enables docs only on an explicit opt-in', () => {
+    expect(parseEnv({ ...prodBase, DOCS_ENABLED: 'true' }).docsEnabled).toBe(true);
+    expect(parseEnv({ ...prodBase, DOCS_ENABLED: 'false' }).docsEnabled).toBe(false);
+  });
 });

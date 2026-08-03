@@ -11,6 +11,7 @@ import {
   MAX_ATTACHMENT_MB,
   isAllowedAttachment,
   fileExtension,
+  mimeTypeForFile,
 } from '@tender/shared';
 import * as attachmentRepo from '../repositories/attachmentRepository';
 import { AppError } from '../lib/errors';
@@ -82,7 +83,9 @@ attachmentsRouter.get('/:id/download', async (req, res, next) => {
       throw new AppError(403, 'FORBIDDEN', 'ليست لديك صلاحية لتنزيل هذا المرفق');
     }
 
-    res.setHeader('Content-Type', attachment.mimeType || 'application/octet-stream');
+    // S6 — يُشتقّ من اسم الملف عند كل تنزيل لا يُقرأ من الصف: الصفوف المكتوبة
+    // قبل هذا الإصلاح تحمل النوع الذي أعلنه العميل، وهي أولى ما يجب ألا يُصدَّق.
+    res.setHeader('Content-Type', mimeTypeForFile(attachment.fileName));
     res.setHeader(
       'Content-Disposition',
       `attachment; filename*=UTF-8''${encodeURIComponent(attachment.fileName)}`,

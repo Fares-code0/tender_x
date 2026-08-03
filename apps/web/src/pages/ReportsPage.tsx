@@ -3,26 +3,36 @@ import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { TENDER_STATUSES, type TenderStatusName } from '@tender/shared';
 import { fetchReportSummary, type ReportSummary } from '../api/reports';
 import { roleLabels, statusLabels } from '../lib/labels';
+import { csvRow } from '../lib/csv';
 
 function toIso(date: string, endOfDay = false): string | undefined {
   if (!date) return undefined;
   return `${date}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}Z`;
 }
 
+// S7 — كل حقل يمرّ بـ`csvRow`: التقرير يُفتح في Excel الذي ينفّذ ما يبدأ بـ`=`،
+// ولا يعرف شيئًا عن تهريب React. راجع `lib/csv.ts`.
 function buildCsv(r: ReportSummary): string {
   const lines: string[] = [];
-  lines.push(`تقرير المناقصات,من:,${r.from ?? 'الكل'},إلى:,${r.to ?? 'الكل'}`);
+  lines.push(csvRow(['تقرير المناقصات', 'من:', r.from ?? 'الكل', 'إلى:', r.to ?? 'الكل']));
   lines.push('');
-  lines.push('الحالة,العدد');
-  for (const s of TENDER_STATUSES) lines.push(`${statusLabels[s]},${r.byStatus[s]}`);
-  lines.push(`الإجمالي,${r.total}`);
+  lines.push(csvRow(['الحالة', 'العدد']));
+  for (const s of TENDER_STATUSES) lines.push(csvRow([statusLabels[s], r.byStatus[s]]));
+  lines.push(csvRow(['الإجمالي', r.total]));
   lines.push('');
-  lines.push(`فوز,${r.wonLost.won}`);
-  lines.push(`خسارة,${r.wonLost.lost}`);
+  lines.push(csvRow(['فوز', r.wonLost.won]));
+  lines.push(csvRow(['خسارة', r.wonLost.lost]));
   lines.push('');
-  lines.push('المستخدم,الدور,مناقصات أنشأها,تغييرات الحالة');
+  lines.push(csvRow(['المستخدم', 'الدور', 'مناقصات أنشأها', 'تغييرات الحالة']));
   for (const u of r.byUser) {
-    lines.push(`${u.name},${roleLabels[u.role as keyof typeof roleLabels] ?? u.role},${u.tendersCreated},${u.statusChanges}`);
+    lines.push(
+      csvRow([
+        u.name,
+        roleLabels[u.role as keyof typeof roleLabels] ?? u.role,
+        u.tendersCreated,
+        u.statusChanges,
+      ]),
+    );
   }
   return '﻿' + lines.join('\n'); // BOM لدعم العربية في Excel
 }
