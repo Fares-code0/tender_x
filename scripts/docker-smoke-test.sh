@@ -197,8 +197,21 @@ else
   bad "/api/metrics محجوب عند الحافة" "المُستلَم: $metrics — سجلّ المسارات مكشوف"
 fi
 
-# المقاييس تبقى متاحة من داخل الشبكة (وإلا كسرنا المراقبة بدل أن نؤمّنها)
-expect_endpoint /metrics 200 'http_requests_total'
+# المقاييس تبقى متاحة من داخل الشبكة (وإلا كسرنا المراقبة بدل أن نؤمّنها).
+#
+# لا `expect_endpoint` هنا: هو يقتطع المتن إلى ٢٠٠ محرف للعرض، بينما السجلّ
+# يتجاوز ١٥ كيلوبايت ويبدأ بمقاييس prom-client الافتراضية، فيقع `http_requests_total`
+# خارج المقتطع. الفحص بالمقتطع كان يفشل على `/metrics` **سليم**.
+metrics_out=$(in_api node -e "
+  fetch('http://127.0.0.1:4000/metrics')
+    .then(async (r) => { console.log(r.status, (await r.text()).includes('http_requests_total')); })
+    .catch((e) => { console.log('000', e.message); process.exit(1); });
+" | tr -d '\r')
+if [ "$metrics_out" = "200 true" ]; then
+  ok "/metrics ⇒ 200 من داخل الشبكة ويحوي http_requests_total (المراقبة سليمة)"
+else
+  bad "/metrics متاح داخليًا ويحوي http_requests_total" "المُستلَم: $metrics_out"
+fi
 
 head_ "6) دورة تسجيل دخول كاملة — جوهر D1"
 # لا يمرّ هذا الفحص إلا إذا صحّ **الثلاثة معًا**: الأصل الواحد، وحذف
